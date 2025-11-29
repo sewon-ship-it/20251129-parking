@@ -229,6 +229,19 @@ textarea.input-field {
   font-weight: 600;
 }
 
+.question-option.correct-answer {
+  border-color: #4caf50;
+  background: #e8f5e9;
+  color: #1b5e20;
+  font-weight: 600;
+}
+
+.question-option.wrong-answer {
+  border-color: #f44336;
+  background: #ffebee;
+  color: #b71c1c;
+}
+
 /* 평가 테이블 */
 .evaluation-table {
   width: 100%;
@@ -413,4 +426,36 @@ textarea.input-field {
 /* 히든 클래스 */
 .hidden {
   display: none;
+}
+
+/* 드래그 앤 드롭 스타일 */
+.draggable-option {
+  user-select: none;
+  transition: all 0.3s ease;
+}
+
+.draggable-option:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--winter-shadow);
+  border-color: var(--winter-blue-500);
+}
+
+.draggable-option:active {
+  transform: scale(0.95);
+  cursor: grabbing;
+}
+
+.draggable-option.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+#letter-problem-answer {
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+#letter-problem-answer:empty::before {
+  content: '여기에 드래그하세요';
+  color: #999;
 }

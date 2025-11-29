@@ -18,7 +18,13 @@ const appState = {
   aiFeedback: '',
   allProposals: [],
   votes: {},
-  dashboard: null
+  dashboard: null,
+  questionAnswers: {
+    question1: null,
+    question2: null,
+    question1Correct: null,
+    question2Correct: null
+  }
 }
 
 // CSV 파싱 함수
@@ -139,7 +145,6 @@ async function renderCurrentStage() {
     case 5: return await renderStage5()
     case 6: return await renderStage6()
     case 7: return await renderStage7()
-    case 8: return renderStage8()
     default: return renderStage0()
   }
 }
@@ -180,6 +185,46 @@ function renderStage1() {
         <p class="stage-subtitle">데이터를 시각화해서 보면서 문제를 파악해봅시다</p>
       </div>
       
+      <div class="question-card" style="margin-bottom: 30px;">
+        <h3 style="color: var(--winter-blue-700); margin-bottom: 20px;">📄 가정통신문</h3>
+        <img src="/가정통신문.PNG" alt="가정통신문" class="content-image" style="max-width: 100%; border: 2px solid var(--winter-blue-200); border-radius: 10px; box-shadow: 0 4px 12px var(--winter-shadow);">
+      </div>
+      
+      <div class="question-card" style="margin-bottom: 30px; background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%); border-left: 5px solid #ff9800;">
+        <div class="question-title">가정통신문을 읽고 문제를 풀어보세요</div>
+        <p style="margin: 20px 0; font-size: 1.1em; line-height: 1.8;">
+          이 가정통신문은 <span id="letter-problem-answer" style="min-width: 200px; display: inline-block; padding: 10px; border: 2px dashed var(--winter-blue-300); border-radius: 8px; background: white; min-height: 40px; vertical-align: middle;">
+            ${appState.answers.letterProblem || '여기에 드래그하세요'}
+          </span> 에 대한 내용입니다.
+        </p>
+        
+        <div style="margin-top: 30px;">
+          <p style="font-weight: 600; margin-bottom: 15px; color: var(--winter-blue-700);">보기 (드래그해서 위 빈칸에 넣어주세요):</p>
+          <div id="letter-options" style="display: flex; gap: 15px; flex-wrap: wrap;">
+            <div class="draggable-option" draggable="true" data-option="쓰레기 투기 문제" 
+                 style="padding: 15px 25px; background: white; border: 2px solid var(--winter-blue-300); border-radius: 10px; cursor: grab; font-size: 1.1em; transition: all 0.3s;">
+              1) 쓰레기 투기 문제
+            </div>
+            <div class="draggable-option" draggable="true" data-option="불법 주정차 문제" 
+                 style="padding: 15px 25px; background: white; border: 2px solid var(--winter-blue-300); border-radius: 10px; cursor: grab; font-size: 1.1em; transition: all 0.3s;">
+              2) 불법 주정차 문제
+            </div>
+            <div class="draggable-option" draggable="true" data-option="환경오염문제" 
+                 style="padding: 15px 25px; background: white; border: 2px solid var(--winter-blue-300); border-radius: 10px; cursor: grab; font-size: 1.1em; transition: all 0.3s;">
+              3) 환경오염문제
+            </div>
+          </div>
+        </div>
+        
+        <div id="letter-feedback" style="margin-top: 20px; font-weight: 600;"></div>
+      </div>
+      
+      <div class="question-card" style="margin-bottom: 30px; background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-left: 5px solid var(--winter-blue-500);">
+        <p style="font-size: 1.2em; color: var(--winter-blue-700); line-height: 1.8; font-weight: 600;">
+          우리학교뿐만 아니라, 불법 주정차 문제는 동작구에서도 문제입니다. 그래프를 보고 문제를 풀어보세요.
+        </p>
+      </div>
+      
       <div class="chart-container">
         <h3 style="color: var(--winter-blue-700); margin-bottom: 20px;">연도별 불법 주정차 민원 현황</h3>
         <canvas id="line-chart"></canvas>
@@ -190,17 +235,40 @@ function renderStage1() {
         <canvas id="bar-chart"></canvas>
       </div>
       
-      <div class="question-card">
-        <p style="font-size: 1.1em; color: var(--winter-blue-700); line-height: 1.8;">
-          <strong>가정통신문:</strong> 등교시간 학교 앞 불법 주정차 문제가 심각합니다. 
-          학생들의 안전을 위해 학부모님들의 협조를 부탁드립니다.
-        </p>
-        <p style="margin-top: 20px; font-style: italic; color: var(--winter-blue-600);">
-          여기서 알 수 있는 사실: 학교 주변에서도 불법 주정차가 지속적으로 발생하고 있습니다.
-        </p>
+      <div class="question-card" style="margin-top: 30px; background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%); border-left: 5px solid #ff9800;">
+        <h3 style="color: #e65100; margin-bottom: 20px;">📝 데이터 분석 문제</h3>
+        
+        <div style="margin-bottom: 25px;">
+          <div class="question-title">문제 1: 꺾은선 그래프를 보고 답하세요</div>
+          <p style="margin: 15px 0; font-size: 1.1em;">
+            전년도보다 민원이 가장 늘어난 해는 언제인가요?
+          </p>
+          <ul class="question-options" style="margin-top: 15px;">
+            <li class="question-option stage1-q1" data-answer="2022년" data-correct="true">2022년</li>
+            <li class="question-option stage1-q1" data-answer="2023년" data-correct="false">2023년</li>
+            <li class="question-option stage1-q1" data-answer="2024년" data-correct="false">2024년</li>
+          </ul>
+          <div id="q1-feedback" style="margin-top: 15px; font-weight: 600;"></div>
+        </div>
+        
+        <div style="margin-bottom: 25px;">
+          <div class="question-title">문제 2: 막대그래프를 보고 답하세요</div>
+          <p style="margin: 15px 0; font-size: 1.1em;">
+            2024년에서 가장 많은 민원이 나온 달은 언제인가요?
+          </p>
+          <ul class="question-options" style="margin-top: 15px;">
+            <li class="question-option stage1-q2" data-answer="10월" data-correct="false">10월</li>
+            <li class="question-option stage1-q2" data-answer="11월" data-correct="true">11월</li>
+            <li class="question-option stage1-q2" data-answer="12월" data-correct="false">12월</li>
+          </ul>
+          <div id="q2-feedback" style="margin-top: 15px; font-weight: 600;"></div>
+        </div>
       </div>
       
-      <button class="btn" id="next-stage-btn">다음 단계로</button>
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        ${appState.currentStage > 0 ? '<button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>' : ''}
+        <button class="btn" id="next-stage-btn" disabled>다음 단계로</button>
+      </div>
     </div>
   `
 }
@@ -215,40 +283,20 @@ function renderStage2() {
       </div>
       
       <div class="question-card">
-        <div class="question-title">문제 1: 꺾은선 그래프를 보고 답하세요</div>
-        <p style="margin: 15px 0; font-size: 1.1em;">
-          전년도보다 민원이 가장 늘어난 해는 언제인가요?
-        </p>
-        <ul class="question-options">
-          <li class="question-option" data-answer="2022년">2022년</li>
-          <li class="question-option" data-answer="2023년">2023년</li>
-          <li class="question-option" data-answer="2024년">2024년</li>
-        </ul>
-      </div>
-      
-      <div class="question-card">
-        <div class="question-title">문제 2: 막대그래프를 보고 답하세요</div>
-        <p style="margin: 15px 0; font-size: 1.1em;">
-          2024년에서 가장 많은 민원이 나온 달은 언제인가요?
-        </p>
-        <ul class="question-options">
-          <li class="question-option" data-answer="10월">10월</li>
-          <li class="question-option" data-answer="11월">11월</li>
-          <li class="question-option" data-answer="12월">12월</li>
-        </ul>
-      </div>
-      
-      <div class="question-card">
         <div class="question-title">문제 3: 데이터 분석 + 예상하기</div>
         <p style="margin: 15px 0; font-size: 1.1em;">
           우리 학교 주변에 불법 주정차 문제가 일어나는 원인은 무엇이라고 생각하나요?<br>
           CSV 파일과 가정통신문을 보고 원인을 예상해서 써보세요.
         </p>
         <textarea id="problem-cause" class="input-field" 
-                  placeholder="예: 주차 공간이 부족해서, 주민들이 자기의 편리함만을 생각해서 등..."></textarea>
+                  placeholder="예: 주차 공간이 부족해서, 주민들이 자기의 편리함만을 생각해서 등..."
+                  value="${appState.answers.problemCause || ''}">${appState.answers.problemCause || ''}</textarea>
       </div>
       
-      <button class="btn" id="next-stage-btn" disabled>다음 단계로</button>
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
+        <button class="btn" id="next-stage-btn" disabled>다음 단계로</button>
+      </div>
     </div>
   `
 }
@@ -287,15 +335,18 @@ function renderStage3() {
           여러분이 생각한 원인과 교과서의 원인을 비교해보고,<br>
           가장 중요한 원인이라고 생각하는 것을 선택해주세요.
         </p>
-        <select id="main-cause" class="input-field" style="margin-top: 15px;">
+        <select id="main-cause" class="input-field" style="margin-top: 15px;" value="${appState.answers.mainCause || ''}">
           <option value="">가장 중요한 원인을 선택하세요</option>
           ${expectedAnswers.map(answer => `
-            <option value="${answer}">${answer}</option>
+            <option value="${answer}" ${appState.answers.mainCause === answer ? 'selected' : ''}>${answer}</option>
           `).join('')}
         </select>
       </div>
       
-      <button class="btn" id="next-stage-btn" disabled>다음 단계로</button>
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
+        <button class="btn" id="next-stage-btn" disabled>다음 단계로</button>
+      </div>
     </div>
   `
 }
@@ -307,6 +358,16 @@ function renderStage4() {
       <div class="stage-header">
         <h1 class="stage-title">✍️ 4단계: 공약 쓰기!</h1>
         <p class="stage-subtitle">해결방안을 제시하고 공약을 작성해봅시다</p>
+      </div>
+      
+      <div class="question-card" style="margin-bottom: 30px;">
+        <p style="font-size: 1.1em; color: var(--winter-blue-700); line-height: 1.8;">
+          <strong>가정통신문:</strong> 등교시간 학교 앞 불법 주정차 문제가 심각합니다. 
+          학생들의 안전을 위해 학부모님들의 협조를 부탁드립니다.
+        </p>
+        <p style="margin-top: 20px; font-style: italic; color: var(--winter-blue-600);">
+          여기서 알 수 있는 사실: 학교 주변에서도 불법 주정차가 지속적으로 발생하고 있습니다.
+        </p>
       </div>
       
       <div class="question-card">
@@ -345,7 +406,10 @@ function renderStage4() {
       
       <div id="ai-feedback-container" class="hidden"></div>
       
-      <button class="btn hidden" id="next-stage-btn" style="margin-top: 20px;">다음 단계로 (투표하기)</button>
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
+        <button class="btn hidden" id="next-stage-btn">다음 단계로 (투표하기)</button>
+      </div>
     </div>
   `
 }
@@ -474,7 +538,10 @@ async function renderStage5() {
         `).join('')}
       </div>
       
-      <button class="btn" id="submit-votes-btn" disabled>투표 완료하기</button>
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
+        <button class="btn" id="submit-votes-btn" disabled>투표 완료하기</button>
+      </div>
       
       <div style="text-align: center; margin-top: 30px; color: var(--winter-blue-600); font-size: 0.9em;">
         💡 다른 학생들이 제안을 추가하면 자동으로 업데이트됩니다!
@@ -562,6 +629,19 @@ async function renderStage6() {
   proposalScores.sort((a, b) => b.total - a.total)
   const winner = proposalScores[0]
   
+  if (!winner || !winner.proposal) {
+    return `
+      <div class="stage-container">
+        <div class="stage-header">
+          <h1 class="stage-title">🏆 6단계: 1등 해결방안 연설문</h1>
+        </div>
+        <p style="text-align: center; padding: 40px; font-size: 1.2em;">
+          1등 해결방안을 찾을 수 없습니다. 제안과 투표가 제대로 완료되었는지 확인해주세요.
+        </p>
+      </div>
+    `
+  }
+  
   return `
     <div class="stage-container">
       <div class="stage-header">
@@ -582,7 +662,10 @@ async function renderStage6() {
         </div>
       </div>
       
-      <button class="btn hidden" id="next-stage-btn" style="margin-top: 20px;">다음 단계로 (대시보드 보기)</button>
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
+        <button class="btn hidden" id="next-stage-btn">다음 단계로 (대시보드 보기)</button>
+      </div>
     </div>
   `
 }
@@ -668,7 +751,10 @@ async function renderStage7() {
         </div>
       ` : ''}
       
-      <button class="btn" id="exit-btn" style="margin-top: 30px;">나가기</button>
+      <div style="display: flex; gap: 10px; margin-top: 30px;">
+        <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
+        <button class="btn" id="exit-btn">나가기</button>
+      </div>
     </div>
   `
 }
@@ -703,17 +789,194 @@ function attachEventListeners() {
     })
   }
   
-  // 2단계: 문제 선택
+  // 1단계: 가정통신문 드래그 앤 드롭
+  const letterAnswerBox = document.getElementById('letter-problem-answer')
+  const draggableOptions = document.querySelectorAll('.draggable-option')
+  
+  if (letterAnswerBox && draggableOptions.length > 0) {
+    // 드래그 가능한 옵션들에 이벤트 리스너 추가
+    draggableOptions.forEach(option => {
+      option.addEventListener('dragstart', function(e) {
+        e.dataTransfer.setData('text/plain', this.dataset.option)
+        this.style.opacity = '0.5'
+      })
+      
+      option.addEventListener('dragend', function(e) {
+        this.style.opacity = '1'
+      })
+      
+      // 클릭으로도 선택 가능
+      option.addEventListener('click', function() {
+        const selectedOption = this.dataset.option
+        appState.answers.letterProblem = selectedOption
+        
+        letterAnswerBox.textContent = selectedOption
+        letterAnswerBox.style.borderColor = 'var(--winter-blue-500)'
+        letterAnswerBox.style.backgroundColor = 'var(--winter-blue-50)'
+        
+        // 피드백 표시
+        const feedbackEl = document.getElementById('letter-feedback')
+        if (feedbackEl) {
+          if (selectedOption === '불법 주정차 문제') {
+            feedbackEl.innerHTML = '<span style="color: #4caf50;">✓ 정답입니다! 가정통신문은 불법 주정차 문제에 대한 내용입니다.</span>'
+          } else {
+            feedbackEl.innerHTML = '<span style="color: #f44336;">✗ 틀렸습니다. 가정통신문을 다시 읽어보세요. 정답은 "불법 주정차 문제"입니다.</span>'
+          }
+        }
+        
+        checkStage1Complete()
+      })
+    })
+    
+    // 드롭 영역 설정
+    letterAnswerBox.addEventListener('dragover', function(e) {
+      e.preventDefault()
+      this.style.borderColor = 'var(--winter-blue-500)'
+      this.style.backgroundColor = 'var(--winter-blue-50)'
+    })
+    
+    letterAnswerBox.addEventListener('dragleave', function(e) {
+      e.preventDefault()
+      if (!this.textContent || this.textContent === '여기에 드래그하세요') {
+        this.style.borderColor = 'var(--winter-blue-300)'
+        this.style.backgroundColor = 'white'
+      }
+    })
+    
+    letterAnswerBox.addEventListener('drop', function(e) {
+      e.preventDefault()
+      const selectedOption = e.dataTransfer.getData('text/plain')
+      
+      appState.answers.letterProblem = selectedOption
+      this.textContent = selectedOption
+      this.style.borderColor = 'var(--winter-blue-500)'
+      this.style.backgroundColor = 'var(--winter-blue-50)'
+      
+      // 피드백 표시
+      const feedbackEl = document.getElementById('letter-feedback')
+      if (feedbackEl) {
+        if (selectedOption === '불법 주정차 문제') {
+          feedbackEl.innerHTML = '<span style="color: #4caf50;">✓ 정답입니다! 가정통신문은 불법 주정차 문제에 대한 내용입니다.</span>'
+        } else {
+          feedbackEl.innerHTML = '<span style="color: #f44336;">✗ 틀렸습니다. 가정통신문을 다시 읽어보세요. 정답은 "불법 주정차 문제"입니다.</span>'
+        }
+      }
+      
+      checkStage1Complete()
+      
+      // 드래그한 옵션 제거 (선택적)
+      draggableOptions.forEach(opt => {
+        if (opt.dataset.option === selectedOption) {
+          opt.style.opacity = '0.5'
+          opt.style.pointerEvents = 'none'
+        }
+      })
+    })
+    
+    // 저장된 답변 복원
+    if (appState.answers.letterProblem) {
+      letterAnswerBox.textContent = appState.answers.letterProblem
+      letterAnswerBox.style.borderColor = 'var(--winter-blue-500)'
+      letterAnswerBox.style.backgroundColor = 'var(--winter-blue-50)'
+      
+      const feedbackEl = document.getElementById('letter-feedback')
+      if (feedbackEl && appState.answers.letterProblem !== '여기에 드래그하세요') {
+        if (appState.answers.letterProblem === '불법 주정차 문제') {
+          feedbackEl.innerHTML = '<span style="color: #4caf50;">✓ 정답입니다! 가정통신문은 불법 주정차 문제에 대한 내용입니다.</span>'
+        } else {
+          feedbackEl.innerHTML = '<span style="color: #f44336;">✗ 틀렸습니다. 가정통신문을 다시 읽어보세요. 정답은 "불법 주정차 문제"입니다.</span>'
+        }
+      }
+    }
+  }
+  
+  // 1단계와 2단계: 문제 선택 및 정답 피드백
   const questionOptions = document.querySelectorAll('.question-option')
   questionOptions.forEach(option => {
     option.addEventListener('click', function() {
+      const isCorrect = this.dataset.correct === 'true'
       const parent = this.closest('.question-card')
-      parent.querySelectorAll('.question-option').forEach(opt => opt.classList.remove('selected'))
+      const questionType = this.classList.contains('stage1-q1') || this.classList.contains('stage2-q1') ? 'q1' : 
+                          this.classList.contains('stage1-q2') || this.classList.contains('stage2-q2') ? 'q2' : null
+      
+      // 같은 질문의 다른 옵션들 선택 해제
+      parent.querySelectorAll('.question-option').forEach(opt => {
+        opt.classList.remove('selected')
+        if (opt.dataset.correct === 'true') {
+          opt.classList.remove('correct-answer')
+        } else {
+          opt.classList.remove('wrong-answer')
+        }
+      })
+      
+      // 선택한 옵션 표시
       this.classList.add('selected')
-      appState.answers[this.dataset.answer] = true
+      if (isCorrect) {
+        this.classList.add('correct-answer')
+      } else {
+        this.classList.add('wrong-answer')
+        // 정답 표시
+        parent.querySelectorAll('.question-option').forEach(opt => {
+          if (opt.dataset.correct === 'true') {
+            opt.classList.add('correct-answer')
+          }
+        })
+      }
+      
+      // 피드백 표시
+      if (questionType === 'q1') {
+        appState.questionAnswers.question1 = this.dataset.answer
+        appState.questionAnswers.question1Correct = isCorrect
+        const feedbackEl = document.getElementById('q1-feedback')
+        if (feedbackEl) {
+          feedbackEl.innerHTML = isCorrect 
+            ? '<span style="color: #4caf50;">✓ 정답입니다! 2022년 민원이 전년 대비 증가했습니다.</span>'
+            : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 2022년입니다.</span>'
+        }
+        appState.answers.question1 = this.dataset.answer
+      } else if (questionType === 'q2') {
+        appState.questionAnswers.question2 = this.dataset.answer
+        appState.questionAnswers.question2Correct = isCorrect
+        const feedbackEl = document.getElementById('q2-feedback')
+        if (feedbackEl) {
+          feedbackEl.innerHTML = isCorrect 
+            ? '<span style="color: #4caf50;">✓ 정답입니다! 11월에 가장 많은 민원이 발생했습니다.</span>'
+            : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 11월입니다.</span>'
+        }
+        appState.answers.question2 = this.dataset.answer
+      }
+      
+      checkStage1Complete()
       checkStage2Complete()
     })
   })
+  
+  // 이전 단계로 가는 버튼
+  const prevStageBtn = document.getElementById('prev-stage-btn')
+  if (prevStageBtn) {
+    prevStageBtn.addEventListener('click', async () => {
+      if (appState.currentStage > 0) {
+        appState.currentStage--
+        await renderApp()
+        
+        if (appState.currentStage === 1) {
+          setTimeout(() => {
+            renderCharts()
+            // 저장된 답변 복원
+            restoreQuestionAnswers()
+            // 1단계 완료 상태 확인
+            checkStage1Complete()
+          }, 100)
+        } else if (appState.currentStage === 2) {
+          setTimeout(() => {
+            renderCharts()
+            restoreQuestionAnswers()
+            checkStage2Complete()
+          }, 100)
+        }
+      }
+    })
+  }
   
   // 문제 원인 입력
   const problemCause = document.getElementById('problem-cause')
@@ -809,7 +1072,7 @@ function attachEventListeners() {
   // 다음 단계 버튼
   const nextStageBtn = document.getElementById('next-stage-btn')
   if (nextStageBtn) {
-    nextStageBtn.addEventListener('click', () => {
+    nextStageBtn.addEventListener('click', async () => {
       if (appState.currentStage < 8) {
         appState.currentStage++
         await renderApp()
@@ -919,13 +1182,79 @@ function renderCharts() {
   }
 }
 
+// 단계 1 완료 확인
+function checkStage1Complete() {
+  const btn = document.getElementById('next-stage-btn')
+  if (btn && appState.currentStage === 1) {
+    const hasLetterProblem = appState.answers.letterProblem && appState.answers.letterProblem !== '여기에 드래그하세요'
+    const hasQ1 = appState.answers.question1 || appState.questionAnswers.question1
+    const hasQ2 = appState.answers.question2 || appState.questionAnswers.question2
+    btn.disabled = !(hasLetterProblem && hasQ1 && hasQ2)
+  }
+}
+
 // 단계 2 완료 확인
 function checkStage2Complete() {
   const btn = document.getElementById('next-stage-btn')
-  if (btn) {
-    const hasAnswers = Object.keys(appState.answers).length >= 3
+  if (btn && appState.currentStage === 2) {
     const hasCause = appState.answers.problemCause && appState.answers.problemCause.length > 0
-    btn.disabled = !(hasAnswers && hasCause)
+    btn.disabled = !hasCause
+  }
+}
+
+// 저장된 질문 답변 복원
+function restoreQuestionAnswers() {
+  // 1단계 질문 복원
+  if (appState.questionAnswers.question1) {
+    const q1Options = document.querySelectorAll('.stage1-q1, .stage2-q1')
+    q1Options.forEach(opt => {
+      if (opt.dataset.answer === appState.questionAnswers.question1) {
+        opt.classList.add('selected')
+        if (opt.dataset.correct === 'true') {
+          opt.classList.add('correct-answer')
+        } else {
+          opt.classList.add('wrong-answer')
+          // 정답 표시
+          q1Options.forEach(o => {
+            if (o.dataset.correct === 'true') {
+              o.classList.add('correct-answer')
+            }
+          })
+        }
+      }
+    })
+    const q1Feedback = document.getElementById('q1-feedback')
+    if (q1Feedback) {
+      q1Feedback.innerHTML = appState.questionAnswers.question1Correct
+        ? '<span style="color: #4caf50;">✓ 정답입니다! 2022년 민원이 전년 대비 증가했습니다.</span>'
+        : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 2022년입니다.</span>'
+    }
+  }
+  
+  if (appState.questionAnswers.question2) {
+    const q2Options = document.querySelectorAll('.stage1-q2, .stage2-q2')
+    q2Options.forEach(opt => {
+      if (opt.dataset.answer === appState.questionAnswers.question2) {
+        opt.classList.add('selected')
+        if (opt.dataset.correct === 'true') {
+          opt.classList.add('correct-answer')
+        } else {
+          opt.classList.add('wrong-answer')
+          // 정답 표시
+          q2Options.forEach(o => {
+            if (o.dataset.correct === 'true') {
+              o.classList.add('correct-answer')
+            }
+          })
+        }
+      }
+    })
+    const q2Feedback = document.getElementById('q2-feedback')
+    if (q2Feedback) {
+      q2Feedback.innerHTML = appState.questionAnswers.question2Correct
+        ? '<span style="color: #4caf50;">✓ 정답입니다! 11월에 가장 많은 민원이 발생했습니다.</span>'
+        : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 11월입니다.</span>'
+    }
   }
 }
 
@@ -1213,7 +1542,7 @@ async function generateSpeech() {
 // 초기화
 async function init() {
   await checkAPIKey()
-  renderApp()
+  await renderApp()
 }
 
 // 페이지 로드 시 초기화
