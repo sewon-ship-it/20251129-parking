@@ -1,4 +1,6 @@
 import './style.css'
+import { db } from './firebase.js'
+import { ref, set, push, get, onValue, update } from 'firebase/database'
 
 // 전역 상태 관리
 const appState = {
@@ -109,8 +111,10 @@ async function callOpenAI(prompt, systemPrompt = '') {
 }
 
 // 메인 렌더링 함수
-function renderApp() {
+async function renderApp() {
   const app = document.querySelector('#app')
+  
+  const stageContent = await renderCurrentStage()
   
   app.innerHTML = `
     <div class="api-status ${appState.apiKeyStatus}">
@@ -118,23 +122,23 @@ function renderApp() {
                 appState.apiKeyStatus === 'checking' ? '확인 중...' : '연결 실패'}
     </div>
     
-    ${renderCurrentStage()}
+    ${stageContent}
   `
   
   attachEventListeners()
 }
 
 // 현재 단계 렌더링
-function renderCurrentStage() {
+async function renderCurrentStage() {
   switch (appState.currentStage) {
     case 0: return renderStage0()
     case 1: return renderStage1()
     case 2: return renderStage2()
     case 3: return renderStage3()
     case 4: return renderStage4()
-    case 5: return renderStage5()
-    case 6: return renderStage6()
-    case 7: return renderStage7()
+    case 5: return await renderStage5()
+    case 6: return await renderStage6()
+    case 7: return await renderStage7()
     case 8: return renderStage8()
     default: return renderStage0()
   }
@@ -346,13 +350,55 @@ function renderStage4() {
   `
 }
 
+// Firebase에서 제안 불러오기
+async function loadProposalsFromFirebase() {
+  try {
+    const proposalsRef = ref(db, 'proposals')
+    const snapshot = await get(proposalsRef)
+    
+    if (snapshot.exists()) {
+      const proposalsData = snapshot.val()
+      const proposals = Object.keys(proposalsData).map(key => ({
+        id: key,
+        ...proposalsData[key]
+      }))
+      appState.allProposals = proposals
+      return proposals
+    }
+    return []
+  } catch (error) {
+    console.error('제안 불러오기 실패:', error)
+    // Firebase 실패 시 localStorage 사용
+    const proposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
+    appState.allProposals = proposals
+    return proposals
+  }
+}
+
+// Firebase에서 투표 불러오기
+async function loadVotesFromFirebase() {
+  try {
+    const votesRef = ref(db, 'votes/all')
+    const snapshot = await get(votesRef)
+    
+    if (snapshot.exists()) {
+      const votesData = snapshot.val()
+      appState.votes = votesData || {}
+      return votesData || {}
+    }
+    return {}
+  } catch (error) {
+    console.error('투표 불러오기 실패:', error)
+    const votes = JSON.parse(localStorage.getItem('votes') || '{}')
+    appState.votes = votes
+    return votes
+  }
+}
+
 // 5단계: 동료 평가/투표
-function renderStage5() {
-  // 실제로는 Firebase에서 모든 제안을 가져와야 하지만, 
-  // 현재는 localStorage에 저장된 것들을 표시
-  const proposals = appState.allProposals.length > 0 
-    ? appState.allProposals 
-    : JSON.parse(localStorage.getItem('allProposals') || '[]')
+async function renderStage5() {
+  // Firebase에서 모든 제안 불러오기
+  const proposals = await loadProposalsFromFirebase()
   
   if (proposals.length === 0) {
     return `
@@ -362,8 +408,8 @@ function renderStage5() {
         </div>
         <p style="text-align: center; font-size: 1.2em; padding: 40px;">
           다른 친구들의 제안이 아직 없습니다. 잠시만 기다려주세요.
-        </p>
-      </div>
+    </p>
+  </div>
     `
   }
   
@@ -429,28 +475,87 @@ function renderStage5() {
       </div>
       
       <button class="btn" id="submit-votes-btn" disabled>투표 완료하기</button>
+      
+      <div style="text-align: center; margin-top: 30px; color: var(--winter-blue-600); font-size: 0.9em;">
+        💡 다른 학생들이 제안을 추가하면 자동으로 업데이트됩니다!
+      </div>
     </div>
   `
+  
+  // 실시간 업데이트 설정
+  setTimeout(() => {
+    setupRealtimeUpdates()
+  }, 100)
+}
+
+// 실시간 업데이트 설정
+function setupRealtimeUpdates() {
+  const proposalsRef = ref(db, 'proposals')
+  
+  onValue(proposalsRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const proposalsData = snapshot.val()
+      const proposals = Object.keys(proposalsData).map(key => ({
+        id: key,
+        ...proposalsData[key]
+      }))
+      
+      // 제안이 변경되었고 현재 5단계에 있으면 화면 업데이트
+      if (appState.currentStage === 5) {
+        appState.allProposals = proposals
+        renderApp()
+        attachEventListeners()
+      } else {
+        appState.allProposals = proposals
+      }
+    }
+  }, (error) => {
+    console.error('실시간 업데이트 오류:', error)
+  })
 }
 
 // 6단계: 1등 해결방안 연설문
-function renderStage6() {
+async function renderStage6() {
   const proposals = appState.allProposals.length > 0 
     ? appState.allProposals 
-    : JSON.parse(localStorage.getItem('allProposals') || '[]')
+    : await loadProposalsFromFirebase()
   
-  // 투표 결과 계산 (실제로는 Firebase에서 가져와야 함)
-  const voteResults = appState.votes || JSON.parse(localStorage.getItem('votes') || '{}')
+  // Firebase에서 투표 결과 가져오기
+  const voteResults = await loadVotesFromFirebase()
   
   // 각 제안의 총점 계산
+  // 투표 데이터 구조: { [studentName]: { [proposalIndex]: { effect, cost, practical, harmless } } }
   const proposalScores = proposals.map((proposal, index) => {
-    const votes = voteResults[index] || {}
-    const effect = votes.effect || 0
-    const cost = votes.cost || 0
-    const practical = votes.practical || 0
-    const harmless = votes.harmless || 0
-    const total = effect + cost + practical + harmless
-    return { index, proposal, total, effect, cost, practical, harmless }
+    let totalEffect = 0
+    let totalCost = 0
+    let totalPractical = 0
+    let totalHarmless = 0
+    let voteCount = 0
+    
+    // 모든 학생의 투표를 합산
+    Object.keys(voteResults).forEach(studentName => {
+      const studentVote = voteResults[studentName]
+      if (studentVote && studentVote[index]) {
+        const vote = studentVote[index]
+        totalEffect += vote.effect || 0
+        totalCost += vote.cost || 0
+        totalPractical += vote.practical || 0
+        totalHarmless += vote.harmless || 0
+        voteCount++
+      }
+    })
+    
+    const total = totalEffect + totalCost + totalPractical + totalHarmless
+    return { 
+      index, 
+      proposal, 
+      total, 
+      effect: totalEffect, 
+      cost: totalCost, 
+      practical: totalPractical, 
+      harmless: totalHarmless,
+      voteCount
+    }
   })
   
   // 1등 찾기
@@ -483,10 +588,12 @@ function renderStage6() {
 }
 
 // 7단계: 개인 대시보드
-function renderStage7() {
+async function renderStage7() {
   const proposals = appState.allProposals.length > 0 
     ? appState.allProposals 
-    : JSON.parse(localStorage.getItem('allProposals') || '[]')
+    : await loadProposalsFromFirebase()
+  
+  const votes = await loadVotesFromFirebase()
   
   const myProposalIndex = proposals.findIndex(p => p.name === appState.studentName)
   const myProposal = myProposalIndex >= 0 ? proposals[myProposalIndex] : null
@@ -502,11 +609,11 @@ function renderStage7() {
     `
   }
   
-  const votes = appState.votes[myProposalIndex] || JSON.parse(localStorage.getItem('votes') || '{}')[myProposalIndex] || {}
-  const effect = votes.effect || 0
-  const cost = votes.cost || 0
-  const practical = votes.practical || 0
-  const harmless = votes.harmless || 0
+  const proposalVotes = votes[myProposalIndex] || votes[myProposal?.id] || {}
+  const effect = proposalVotes.effect || 0
+  const cost = proposalVotes.cost || 0
+  const practical = proposalVotes.practical || 0
+  const harmless = proposalVotes.harmless || 0
   const total = effect + cost + practical + harmless
   
   const scores = [
@@ -705,7 +812,7 @@ function attachEventListeners() {
     nextStageBtn.addEventListener('click', () => {
       if (appState.currentStage < 8) {
         appState.currentStage++
-        renderApp()
+        await renderApp()
         
         if (appState.currentStage === 6) {
           setTimeout(() => {
@@ -715,6 +822,10 @@ function attachEventListeners() {
           setTimeout(() => {
             renderCharts()
           }, 100)
+        } else if (appState.currentStage === 5) {
+          // 5단계 진입 시 제안 불러오기
+          await loadProposalsFromFirebase()
+          await renderApp()
         }
       }
     })
@@ -848,26 +959,49 @@ async function combineProposal() {
     document.getElementById('combined-proposal').classList.remove('hidden')
     appState.proposal.combinedText = combinedText
     
-    // localStorage에 저장
-    const allProposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
+    // Firebase에 제안 저장
     const myProposal = {
       name: appState.studentName,
       problem: problem,
       solution: solution,
       reason: reason,
       combinedText: combinedText,
-      text: combinedText
+      text: combinedText,
+      timestamp: new Date().toISOString()
     }
     
-    const existingIndex = allProposals.findIndex(p => p.name === appState.studentName)
-    if (existingIndex >= 0) {
-      allProposals[existingIndex] = myProposal
-    } else {
-      allProposals.push(myProposal)
+    try {
+      // 기존 제안 확인
+      const proposals = await loadProposalsFromFirebase()
+      const existingProposal = proposals.find(p => p.name === appState.studentName)
+      
+      if (existingProposal) {
+        // 기존 제안 업데이트
+        const proposalRef = ref(db, `proposals/${existingProposal.id}`)
+        await update(proposalRef, myProposal)
+      } else {
+        // 새 제안 추가
+        const proposalsRef = ref(db, 'proposals')
+        await push(proposalsRef, myProposal)
+      }
+      
+      // 로컬 상태 업데이트
+      const updatedProposals = await loadProposalsFromFirebase()
+      appState.allProposals = updatedProposals
+    } catch (error) {
+      console.error('제안 저장 실패:', error)
+      // Firebase 실패 시 localStorage에 저장
+      const allProposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
+      const existingIndex = allProposals.findIndex(p => p.name === appState.studentName)
+      if (existingIndex >= 0) {
+        allProposals[existingIndex] = myProposal
+      } else {
+        allProposals.push(myProposal)
+      }
+      localStorage.setItem('allProposals', JSON.stringify(allProposals))
+      appState.allProposals = allProposals
+      alert('Firebase 저장에 실패했습니다. 로컬에 저장되었습니다.')
     }
-    
-    localStorage.setItem('allProposals', JSON.stringify(allProposals))
-    appState.allProposals = allProposals
   } catch (error) {
     alert('문장 연결 중 오류가 발생했습니다: ' + error.message)
   }
@@ -956,16 +1090,41 @@ function checkVotingComplete() {
 
 // 투표 제출
 async function submitVotes() {
-  // localStorage에 저장 (실제로는 Firebase에 저장)
-  localStorage.setItem('votes', JSON.stringify(appState.votes))
-  
-  alert('투표가 완료되었습니다!')
-  appState.currentStage = 6
-  renderApp()
-  
-  setTimeout(() => {
-    generateSpeech()
-  }, 500)
+  try {
+    // Firebase에 투표 저장 (전체 투표 데이터에 현재 학생의 투표 추가)
+    const allVotesRef = ref(db, 'votes/all')
+    const currentVotes = await loadVotesFromFirebase()
+    
+    // 현재 학생의 투표를 전체 투표에 추가
+    const updatedVotes = {
+      ...currentVotes,
+      [appState.studentName]: appState.votes
+    }
+    
+    await set(allVotesRef, updatedVotes)
+    
+    // 로컬 상태 업데이트
+    appState.votes = updatedVotes
+    
+    alert('투표가 완료되었습니다!')
+    appState.currentStage = 6
+    await renderApp()
+    
+    setTimeout(() => {
+      generateSpeech()
+    }, 500)
+  } catch (error) {
+    console.error('투표 저장 실패:', error)
+    // Firebase 실패 시 localStorage에 저장
+    localStorage.setItem('votes', JSON.stringify(appState.votes))
+    alert('투표가 완료되었습니다! (로컬 저장)')
+    appState.currentStage = 6
+    await renderApp()
+    
+    setTimeout(() => {
+      generateSpeech()
+    }, 500)
+  }
 }
 
 // 연설문 생성
@@ -975,19 +1134,43 @@ async function generateSpeech() {
   
   const proposals = appState.allProposals.length > 0 
     ? appState.allProposals 
-    : JSON.parse(localStorage.getItem('allProposals') || '[]')
+    : await loadProposalsFromFirebase()
   
-  const voteResults = appState.votes || JSON.parse(localStorage.getItem('votes') || '{}')
+  const voteResults = await loadVotesFromFirebase()
   
   // 각 제안의 총점 계산
+  // 투표 데이터 구조: { [studentName]: { [proposalIndex]: { effect, cost, practical, harmless } } }
   const proposalScores = proposals.map((proposal, index) => {
-    const votes = voteResults[index] || {}
-    const effect = votes.effect || 0
-    const cost = votes.cost || 0
-    const practical = votes.practical || 0
-    const harmless = votes.harmless || 0
-    const total = effect + cost + practical + harmless
-    return { index, proposal, total, effect, cost, practical, harmless }
+    let totalEffect = 0
+    let totalCost = 0
+    let totalPractical = 0
+    let totalHarmless = 0
+    let voteCount = 0
+    
+    // 모든 학생의 투표를 합산
+    Object.keys(voteResults).forEach(studentName => {
+      const studentVote = voteResults[studentName]
+      if (studentVote && studentVote[index]) {
+        const vote = studentVote[index]
+        totalEffect += vote.effect || 0
+        totalCost += vote.cost || 0
+        totalPractical += vote.practical || 0
+        totalHarmless += vote.harmless || 0
+        voteCount++
+      }
+    })
+    
+    const total = totalEffect + totalCost + totalPractical + totalHarmless
+    return { 
+      index, 
+      proposal, 
+      total, 
+      effect: totalEffect, 
+      cost: totalCost, 
+      practical: totalPractical, 
+      harmless: totalHarmless,
+      voteCount
+    }
   })
   
   proposalScores.sort((a, b) => b.total - a.total)

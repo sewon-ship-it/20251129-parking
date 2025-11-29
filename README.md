@@ -55,11 +55,71 @@ npm run dev
 npm run build
 ```
 
-## Firebase 연동 (선택사항)
+## Firebase Realtime Database 연동
 
-실제 환경에서 여러 학생의 데이터를 실시간으로 공유하려면 Firebase를 연동하세요.
+이 프로젝트는 Firebase Realtime Database를 사용하여 여러 학생의 데이터를 실시간으로 공유합니다.
 
-자세한 설정 방법은 [FIREBASE_SETUP.md](./FIREBASE_SETUP.md) 파일을 참고하세요.
+### 설정 완료
+
+Firebase 설정은 이미 완료되었습니다:
+- `src/firebase.js` 파일에 Firebase 설정 포함
+- 제안 저장/불러오기: Firebase Realtime Database 사용
+- 투표 저장/불러오기: Firebase Realtime Database 사용
+- 실시간 업데이트: 5단계에서 다른 학생의 제안이 추가되면 자동 업데이트
+
+### Firebase 패키지 설치
+
+```bash
+npm install firebase
+```
+
+### 데이터 구조
+
+**proposals** (제안):
+```
+proposals/
+  {proposalId}/
+    name: string
+    problem: string
+    solution: string
+    reason: string
+    combinedText: string
+    text: string
+    timestamp: string
+```
+
+**votes** (투표):
+```
+votes/
+  all/
+    {studentName}/
+      {proposalIndex}/
+        effect: number (1-5)
+        cost: number (1-5)
+        practical: number (1-5)
+        harmless: number (1-5)
+```
+
+### Firebase 보안 규칙
+
+Firebase Console에서 다음 규칙을 설정하세요:
+
+```json
+{
+  "rules": {
+    "proposals": {
+      ".read": true,
+      ".write": true
+    },
+    "votes": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
+```
+
+**주의**: 프로덕션 환경에서는 인증된 사용자만 읽고 쓸 수 있도록 보안 규칙을 강화하는 것을 권장합니다.
 
 ## 데이터 파일
 
