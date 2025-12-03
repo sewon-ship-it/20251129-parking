@@ -241,11 +241,11 @@ function renderStage1() {
         <div style="margin-bottom: 25px;">
           <div class="question-title">문제 1: 꺾은선 그래프를 보고 답하세요</div>
           <p style="margin: 15px 0; font-size: 1.1em;">
-            전년도보다 민원이 가장 늘어난 해는 언제인가요?
+            전년도보다 민원이 가장 많이 줄어든 해는 언제인가요?
           </p>
           <ul class="question-options" style="margin-top: 15px;">
-            <li class="question-option stage1-q1" data-answer="2022년" data-correct="true">2022년</li>
-            <li class="question-option stage1-q1" data-answer="2023년" data-correct="false">2023년</li>
+            <li class="question-option stage1-q1" data-answer="2020년" data-correct="true">2020년</li>
+            <li class="question-option stage1-q1" data-answer="2021년" data-correct="false">2021년</li>
             <li class="question-option stage1-q1" data-answer="2024년" data-correct="false">2024년</li>
           </ul>
           <div id="q1-feedback" style="margin-top: 15px; font-weight: 600;"></div>
@@ -285,8 +285,7 @@ function renderStage2() {
       <div class="question-card">
         <div class="question-title">문제 3: 데이터 분석 + 예상하기</div>
         <p style="margin: 15px 0; font-size: 1.1em;">
-          우리 학교 주변에 불법 주정차 문제가 일어나는 원인은 무엇이라고 생각하나요?<br>
-          CSV 파일과 가정통신문을 보고 원인을 예상해서 써보세요.
+          우리 학교 주변에 불법 주정차 문제가 일어나는 원인은 무엇이라고 생각하나요?
         </p>
         <textarea id="problem-cause" class="input-field" 
                   placeholder="예: 주차 공간이 부족해서, 주민들이 자기의 편리함만을 생각해서 등..."
@@ -930,8 +929,8 @@ function attachEventListeners() {
         const feedbackEl = document.getElementById('q1-feedback')
         if (feedbackEl) {
           feedbackEl.innerHTML = isCorrect 
-            ? '<span style="color: #4caf50;">✓ 정답입니다! 2022년 민원이 전년 대비 증가했습니다.</span>'
-            : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 2022년입니다.</span>'
+            ? '<span style="color: #4caf50;">✓ 정답입니다! 2020년 민원이 전년 대비 가장 많이 줄어들었습니다.</span>'
+            : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 2020년입니다.</span>'
         }
         appState.answers.question1 = this.dataset.answer
       } else if (questionType === 'q2') {
@@ -1124,8 +1123,9 @@ function renderCharts() {
           data: totals,
           borderColor: 'rgb(61, 162, 191)',
           backgroundColor: 'rgba(61, 162, 191, 0.1)',
-          tension: 0.4,
-          fill: true
+          tension: 0, // 꺾은선 그래프 (부드러운 곡선 없음)
+          fill: true,
+          stepped: false
         }]
       },
       options: {
@@ -1226,8 +1226,8 @@ function restoreQuestionAnswers() {
     const q1Feedback = document.getElementById('q1-feedback')
     if (q1Feedback) {
       q1Feedback.innerHTML = appState.questionAnswers.question1Correct
-        ? '<span style="color: #4caf50;">✓ 정답입니다! 2022년 민원이 전년 대비 증가했습니다.</span>'
-        : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 2022년입니다.</span>'
+        ? '<span style="color: #4caf50;">✓ 정답입니다! 2020년 민원이 전년 대비 가장 많이 줄어들었습니다.</span>'
+        : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 2020년입니다.</span>'
     }
   }
   
