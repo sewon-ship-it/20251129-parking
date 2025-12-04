@@ -721,22 +721,49 @@ async function renderStage7() {
     `
   }
   
-  const proposalVotes = votes[myProposalIndex] || votes[myProposal?.id] || {}
-  const effect = proposalVotes.effect || 0
-  const cost = proposalVotes.cost || 0
-  const practical = proposalVotes.practical || 0
-  const harmless = proposalVotes.harmless || 0
+  // 모든 학생의 투표를 합산하여 내 제안의 점수 계산
+  // 투표 데이터 구조: { [studentName]: { [proposalIndex]: { effect, cost, practical, harmless } } }
+  let totalEffect = 0
+  let totalCost = 0
+  let totalPractical = 0
+  let totalHarmless = 0
+  let voteCount = 0
+  
+  Object.keys(votes).forEach(studentName => {
+    const studentVote = votes[studentName]
+    if (studentVote && studentVote[myProposalIndex]) {
+      const vote = studentVote[myProposalIndex]
+      totalEffect += vote.effect || 0
+      totalCost += vote.cost || 0
+      totalPractical += vote.practical || 0
+      totalHarmless += vote.harmless || 0
+      voteCount++
+    }
+  })
+  
+  // 평균 점수 계산
+  const avgEffect = voteCount > 0 ? (totalEffect / voteCount).toFixed(1) : 0
+  const avgCost = voteCount > 0 ? (totalCost / voteCount).toFixed(1) : 0
+  const avgPractical = voteCount > 0 ? (totalPractical / voteCount).toFixed(1) : 0
+  const avgHarmless = voteCount > 0 ? (totalHarmless / voteCount).toFixed(1) : 0
+  
+  const effect = totalEffect
+  const cost = totalCost
+  const practical = totalPractical
+  const harmless = totalHarmless
   const total = effect + cost + practical + harmless
   
   const scores = [
-    { label: '효과가 큰가요?', value: effect, max: 5 },
-    { label: '비용이 적게 드나요?', value: cost, max: 5 },
-    { label: '실천할 수 있나요?', value: practical, max: 5 },
-    { label: '피해를 주지 않나요?', value: harmless, max: 5 }
+    { label: '효과가 큰가요?', value: effect, avg: parseFloat(avgEffect), max: 5, key: 'effect' },
+    { label: '비용이 적게 드나요?', value: cost, avg: parseFloat(avgCost), max: 5, key: 'cost' },
+    { label: '실천할 수 있나요?', value: practical, avg: parseFloat(avgPractical), max: 5, key: 'practical' },
+    { label: '피해를 주지 않나요?', value: harmless, avg: parseFloat(avgHarmless), max: 5, key: 'harmless' }
   ]
   
-  const maxScore = Math.max(...scores.map(s => s.value))
-  const strengths = scores.filter(s => s.value === maxScore && s.value > 0).map(s => s.label)
+  // 가장 강점인 부분 찾기 (평균 점수 기준)
+  const maxAvgScore = Math.max(...scores.map(s => s.avg))
+  const strengths = scores.filter(s => s.avg === maxAvgScore && s.avg > 0).map(s => s.label)
+  const strengthKeys = scores.filter(s => s.avg === maxAvgScore && s.avg > 0).map(s => s.key)
   
   return `
     <div class="stage-container">
@@ -751,32 +778,51 @@ async function renderStage7() {
       </div>
       
       <div class="dashboard">
-        ${scores.map((score, index) => `
-          <div class="dashboard-card">
+        ${scores.map((score, index) => {
+          const isStrength = strengthKeys.includes(score.key)
+          return `
+          <div class="dashboard-card ${isStrength ? 'strength-badge' : ''}" style="position: relative;">
+            ${isStrength ? `
+              <div class="strength-badge-icon" style="position: absolute; top: -10px; right: -10px; background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4); z-index: 10; border: 3px solid white;">
+                <span style="font-size: 24px;">⭐</span>
+              </div>
+            ` : ''}
             <h3>${score.label}</h3>
-            <div class="dashboard-score">${score.value}</div>
-            <div class="dashboard-label">/ ${score.max}점</div>
+            <div class="dashboard-score" style="${isStrength ? 'color: #ff9800; font-weight: 700;' : ''}">${score.avg}</div>
+            <div class="dashboard-label">평균 / ${score.max}점</div>
+            <div style="margin-top: 8px; font-size: 0.85em; color: var(--winter-blue-600);">
+              (${voteCount}명 평가)
+            </div>
           </div>
-        `).join('')}
+        `}).join('')}
         
         <div class="dashboard-card" style="background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%);">
           <h3>총점</h3>
           <div class="dashboard-score" style="color: #ff9800;">${total}</div>
-          <div class="dashboard-label">/ 20점</div>
+          <div class="dashboard-label">/ ${voteCount * 20}점 (${voteCount}명 평가)</div>
+          <div style="margin-top: 8px; font-size: 0.85em; color: #e65100;">
+            평균 총점: ${voteCount > 0 ? (total / voteCount).toFixed(1) : 0}점 / 20점
+          </div>
         </div>
       </div>
       
       ${strengths.length > 0 ? `
         <div class="question-card" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); 
-                                         border-left: 5px solid #4caf50;">
-          <h3 style="color: #2e7d32; margin-bottom: 15px;">✨ 가장 강점인 부분:</h3>
+                                         border-left: 5px solid #4caf50; margin-top: 30px;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <span style="font-size: 2em;">⭐</span>
+            <h3 style="color: #2e7d32; margin: 0;">가장 강점인 부분</h3>
+          </div>
           <ul style="list-style: none; padding: 0;">
             ${strengths.map(strength => `
-              <li style="padding: 10px; margin: 5px 0; font-size: 1.1em; color: #1b5e20;">
-                • ${strength}
+              <li style="padding: 12px; margin: 8px 0; font-size: 1.1em; color: #1b5e20; background: white; border-radius: 8px; border-left: 4px solid #4caf50;">
+                🏆 ${strength}
               </li>
             `).join('')}
           </ul>
+          <p style="margin-top: 15px; color: #2e7d32; font-size: 0.9em; font-style: italic;">
+            이 항목에서 가장 높은 평균 점수를 받았습니다!
+          </p>
         </div>
       ` : ''}
       

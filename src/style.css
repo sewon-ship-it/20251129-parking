@@ -307,6 +307,18 @@ textarea.input-field {
   border-radius: 15px;
   box-shadow: 0 4px 12px var(--winter-shadow);
   text-align: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px var(--winter-shadow);
+}
+
+.dashboard-card.strength-badge {
+  border: 3px solid #ffd700;
+  background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%);
+  box-shadow: 0 6px 20px rgba(255, 215, 0, 0.3);
 }
 
 .dashboard-card h3 {
