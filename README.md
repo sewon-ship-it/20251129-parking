@@ -34,8 +34,20 @@
 프로젝트 루트에 `.env` 파일을 생성하고 다음 내용을 추가하세요:
 
 ```env
+# OpenAI API Key
 VITE_OPENAI_API_KEY=your_openai_api_key_here
+
+# Firebase Configuration
+VITE_FIREBASE_API_KEY=your_firebase_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
+VITE_FIREBASE_DATABASE_URL=https://your_project_id-default-rtdb.asia-southeast1.firebasedatabase.app
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project_id.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
 ```
+
+`.env.example` 파일을 참고하여 필요한 환경변수를 설정하세요.
 
 ### 2. 의존성 설치
 
@@ -141,7 +153,13 @@ Firebase Console에서 다음 규칙을 설정하세요:
 2. Netlify에서 저장소 연결
 3. 환경변수 설정:
    - `VITE_OPENAI_API_KEY`
-   - (Firebase 사용 시) Firebase 관련 환경변수
+   - `VITE_FIREBASE_API_KEY`
+   - `VITE_FIREBASE_AUTH_DOMAIN`
+   - `VITE_FIREBASE_DATABASE_URL`
+   - `VITE_FIREBASE_PROJECT_ID`
+   - `VITE_FIREBASE_STORAGE_BUCKET`
+   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+   - `VITE_FIREBASE_APP_ID`
 
 ## 사용 방법
 
