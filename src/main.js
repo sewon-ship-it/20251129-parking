@@ -876,6 +876,9 @@ async function renderAdminStage() {
       problem: proposal.problem,
       solution: proposal.solution,
       reason: proposal.reason,
+      // 2단계 데이터
+      problemCause: proposal.problemCause || '',
+      mainCause: proposal.mainCause || '',
       voteCount,
       avgEffect,
       avgCost,
@@ -930,8 +933,39 @@ async function renderAdminStage() {
             <h4 style="color: var(--winter-blue-700); margin-bottom: 15px;">
               ${index + 1}. ${item.name}님의 제안
             </h4>
-            <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-              <p style="line-height: 1.8; color: var(--winter-blue-900);">${item.proposal}</p>
+            
+            ${item.problemCause ? `
+              <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid var(--winter-blue-500);">
+                <h5 style="color: var(--winter-blue-700); margin-bottom: 10px; font-size: 1.1em;">📐 2단계: 문제 원인 분석</h5>
+                <p style="color: var(--winter-blue-900); line-height: 1.8; margin-bottom: 10px;">
+                  <strong>학생이 생각한 원인:</strong> ${item.problemCause}
+                </p>
+                ${item.mainCause ? `
+                  <p style="color: var(--winter-blue-900); line-height: 1.8;">
+                    <strong>선택한 주요 원인:</strong> ${item.mainCause}
+                  </p>
+                ` : ''}
+              </div>
+            ` : ''}
+            
+            <div style="background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ff9800;">
+              <h5 style="color: #e65100; margin-bottom: 10px; font-size: 1.1em;">✍️ 4단계: 해결방안</h5>
+              <div style="background: white; padding: 12px; border-radius: 6px; margin-bottom: 10px;">
+                <p style="color: var(--winter-blue-900); line-height: 1.8; margin-bottom: 8px;">
+                  <strong>문제 상황:</strong> ${item.problem}
+                </p>
+                <p style="color: var(--winter-blue-900); line-height: 1.8; margin-bottom: 8px;">
+                  <strong>해결방안:</strong> ${item.solution}
+                </p>
+                <p style="color: var(--winter-blue-900); line-height: 1.8;">
+                  <strong>이유:</strong> ${item.reason}
+                </p>
+              </div>
+              <div style="background: white; padding: 12px; border-radius: 6px;">
+                <p style="color: var(--winter-blue-900); line-height: 1.8; font-weight: 600;">
+                  <strong>최종 공약문:</strong> ${item.proposal}
+                </p>
+              </div>
             </div>
             ${item.voteCount > 0 ? `
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 15px;">
@@ -1604,6 +1638,9 @@ async function combineProposal() {
       reason: reason,
       combinedText: combinedText,
       text: combinedText,
+      // 2단계 데이터 추가
+      problemCause: appState.answers.problemCause || '',
+      mainCause: appState.answers.mainCause || '',
       timestamp: new Date().toISOString()
     }
     
