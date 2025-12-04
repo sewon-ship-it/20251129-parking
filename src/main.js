@@ -159,6 +159,7 @@ async function renderCurrentStage() {
     case 5: return await renderStage5()
     case 6: return await renderStage6()
     case 7: return await renderStage7()
+    case 8: return await renderAdminStage()
     default: return renderStage0()
   }
 }
@@ -185,6 +186,11 @@ function renderStage0() {
         <button class="btn btn-success" id="start-btn" ${appState.studentName ? '' : 'disabled'}>
           시작하기 🚀
         </button>
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 2px dashed var(--winter-blue-300);">
+          <button class="btn" id="admin-btn" style="background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%); color: white;">
+            👨‍🏫 교사/관리자 페이지
+          </button>
+        </div>
       </div>
     </div>
   `
@@ -834,6 +840,181 @@ async function renderStage7() {
   `
 }
 
+// 8단계: 관리자 페이지
+async function renderAdminStage() {
+  const proposals = await loadProposalsFromFirebase()
+  const votes = await loadVotesFromFirebase()
+  
+  // 모든 학생의 제안 요약
+  const proposalsSummary = proposals.map((proposal, index) => {
+    // 각 제안에 대한 투표 통계 계산
+    let totalEffect = 0, totalCost = 0, totalPractical = 0, totalHarmless = 0
+    let voteCount = 0
+    
+    Object.keys(votes).forEach(studentName => {
+      const studentVote = votes[studentName]
+      if (studentVote && studentVote[index]) {
+        const vote = studentVote[index]
+        totalEffect += vote.effect || 0
+        totalCost += vote.cost || 0
+        totalPractical += vote.practical || 0
+        totalHarmless += vote.harmless || 0
+        voteCount++
+      }
+    })
+    
+    const avgEffect = voteCount > 0 ? (totalEffect / voteCount).toFixed(1) : 0
+    const avgCost = voteCount > 0 ? (totalCost / voteCount).toFixed(1) : 0
+    const avgPractical = voteCount > 0 ? (totalPractical / voteCount).toFixed(1) : 0
+    const avgHarmless = voteCount > 0 ? (totalHarmless / voteCount).toFixed(1) : 0
+    const total = totalEffect + totalCost + totalPractical + totalHarmless
+    const avgTotal = voteCount > 0 ? (total / voteCount).toFixed(1) : 0
+    
+    return {
+      name: proposal.name,
+      proposal: proposal.combinedText || proposal.text,
+      problem: proposal.problem,
+      solution: proposal.solution,
+      reason: proposal.reason,
+      voteCount,
+      avgEffect,
+      avgCost,
+      avgPractical,
+      avgHarmless,
+      avgTotal,
+      total
+    }
+  })
+  
+  return `
+    <div class="stage-container">
+      <div class="stage-header">
+        <h1 class="stage-title">👨‍🏫 관리자 페이지</h1>
+        <p class="stage-subtitle">학생 데이터 관리 및 조회</p>
+      </div>
+      
+      <div style="display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap;">
+        <button class="btn" id="refresh-data-btn" style="background: linear-gradient(135deg, var(--winter-blue-500) 0%, var(--winter-blue-600) 100%); color: white;">
+          🔄 데이터 새로고침
+        </button>
+        <button class="btn" id="clear-data-btn" style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); color: white;">
+          🗑️ 모든 데이터 초기화
+        </button>
+        <button class="btn btn-secondary" id="back-to-main-btn">
+          ← 메인으로 돌아가기
+        </button>
+      </div>
+      
+      <div class="question-card" style="margin-bottom: 30px;">
+        <h3 style="color: var(--winter-blue-700); margin-bottom: 20px;">📊 전체 통계</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+          <div style="background: var(--winter-blue-50); padding: 15px; border-radius: 10px; text-align: center;">
+            <div style="font-size: 2em; font-weight: 700; color: var(--winter-blue-700);">${proposals.length}</div>
+            <div style="color: var(--winter-blue-600);">제안 수</div>
+          </div>
+          <div style="background: var(--winter-blue-50); padding: 15px; border-radius: 10px; text-align: center;">
+            <div style="font-size: 2em; font-weight: 700; color: var(--winter-blue-700);">${Object.keys(votes).length}</div>
+            <div style="color: var(--winter-blue-600);">투표한 학생 수</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="question-card">
+        <h3 style="color: var(--winter-blue-700); margin-bottom: 20px;">📝 학생 제안 및 평가 결과</h3>
+        ${proposalsSummary.length === 0 ? `
+          <p style="text-align: center; padding: 40px; color: var(--winter-blue-600);">
+            아직 제안이 없습니다.
+          </p>
+        ` : proposalsSummary.map((item, index) => `
+          <div style="background: var(--winter-ice); padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid var(--winter-blue-500);">
+            <h4 style="color: var(--winter-blue-700); margin-bottom: 15px;">
+              ${index + 1}. ${item.name}님의 제안
+            </h4>
+            <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+              <p style="line-height: 1.8; color: var(--winter-blue-900);">${item.proposal}</p>
+            </div>
+            ${item.voteCount > 0 ? `
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 15px;">
+                <div style="background: white; padding: 10px; border-radius: 8px; text-align: center;">
+                  <div style="font-size: 0.85em; color: var(--winter-blue-600);">효과</div>
+                  <div style="font-size: 1.5em; font-weight: 700; color: var(--winter-blue-700);">${item.avgEffect}</div>
+                </div>
+                <div style="background: white; padding: 10px; border-radius: 8px; text-align: center;">
+                  <div style="font-size: 0.85em; color: var(--winter-blue-600);">비용</div>
+                  <div style="font-size: 1.5em; font-weight: 700; color: var(--winter-blue-700);">${item.avgCost}</div>
+                </div>
+                <div style="background: white; padding: 10px; border-radius: 8px; text-align: center;">
+                  <div style="font-size: 0.85em; color: var(--winter-blue-600);">실천</div>
+                  <div style="font-size: 1.5em; font-weight: 700; color: var(--winter-blue-700);">${item.avgPractical}</div>
+                </div>
+                <div style="background: white; padding: 10px; border-radius: 8px; text-align: center;">
+                  <div style="font-size: 0.85em; color: var(--winter-blue-600);">피해 없음</div>
+                  <div style="font-size: 1.5em; font-weight: 700; color: var(--winter-blue-700);">${item.avgHarmless}</div>
+                </div>
+                <div style="background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%); padding: 10px; border-radius: 8px; text-align: center; border: 2px solid #ff9800;">
+                  <div style="font-size: 0.85em; color: #e65100;">평균 총점</div>
+                  <div style="font-size: 1.5em; font-weight: 700; color: #ff9800;">${item.avgTotal}</div>
+                  <div style="font-size: 0.75em; color: #e65100;">(${item.voteCount}명 평가)</div>
+                </div>
+              </div>
+            ` : `
+              <div style="text-align: center; padding: 15px; color: var(--winter-blue-600);">
+                아직 평가가 없습니다.
+              </div>
+            `}
+          </div>
+        `).join('')}
+      </div>
+      
+      <div style="display: flex; gap: 10px; margin-top: 30px;">
+        <button class="btn btn-secondary" id="back-to-main-btn-2">
+          ← 메인으로 돌아가기
+        </button>
+      </div>
+    </div>
+  `
+}
+
+// 데이터 초기화 함수
+async function clearAllData() {
+  if (!confirm('⚠️ 정말로 모든 학생 데이터를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!')) {
+    return
+  }
+  
+  if (!confirm('⚠️ 한 번 더 확인합니다. 모든 제안과 투표 데이터가 삭제됩니다. 계속하시겠습니까?')) {
+    return
+  }
+  
+  if (!db) {
+    alert('Firebase가 초기화되지 않았습니다. 데이터를 초기화할 수 없습니다.')
+    return
+  }
+  
+  try {
+    // proposals와 votes 모두 삭제
+    const proposalsRef = ref(db, 'proposals')
+    const votesRef = ref(db, 'votes')
+    
+    await set(proposalsRef, null)
+    await set(votesRef, null)
+    
+    // 로컬 상태도 초기화
+    appState.allProposals = []
+    appState.votes = {}
+    localStorage.removeItem('allProposals')
+    localStorage.removeItem('votes')
+    
+    alert('✅ 모든 데이터가 성공적으로 삭제되었습니다!')
+    
+    // 관리자 페이지 새로고침
+    appState.currentStage = 8
+    await renderApp()
+  } catch (error) {
+    console.error('데이터 초기화 실패:', error)
+    alert('❌ 데이터 초기화 중 오류가 발생했습니다: ' + error.message)
+  }
+}
+
 // 이벤트 리스너 연결
 function attachEventListeners() {
   // 0단계: 이름 입력
@@ -866,6 +1047,20 @@ function attachEventListeners() {
         }
       }
     })
+    
+    // 관리자 페이지 버튼
+    const adminBtn = document.getElementById('admin-btn')
+    if (adminBtn) {
+      adminBtn.addEventListener('click', () => {
+        const password = prompt('관리자 비밀번호를 입력하세요:')
+        if (password === 'teacher2024' || password === 'admin') {
+          appState.currentStage = 8
+          renderApp()
+        } else if (password !== null) {
+          alert('비밀번호가 올바르지 않습니다.')
+        }
+      })
+    }
   }
   
   // 1단계: 가정통신문 드래그 앤 드롭
@@ -1180,6 +1375,39 @@ function attachEventListeners() {
       if (confirm('정말 나가시겠습니까?')) {
         window.location.reload()
       }
+    })
+  }
+  
+  // 관리자 페이지 버튼들
+  const refreshDataBtn = document.getElementById('refresh-data-btn')
+  if (refreshDataBtn) {
+    refreshDataBtn.addEventListener('click', async () => {
+      await renderApp()
+      alert('데이터를 새로고침했습니다.')
+    })
+  }
+  
+  const clearDataBtn = document.getElementById('clear-data-btn')
+  if (clearDataBtn) {
+    clearDataBtn.addEventListener('click', async () => {
+      await clearAllData()
+    })
+  }
+  
+  const backToMainBtn = document.getElementById('back-to-main-btn')
+  const backToMainBtn2 = document.getElementById('back-to-main-btn-2')
+  if (backToMainBtn) {
+    backToMainBtn.addEventListener('click', () => {
+      appState.currentStage = 0
+      appState.studentName = ''
+      renderApp()
+    })
+  }
+  if (backToMainBtn2) {
+    backToMainBtn2.addEventListener('click', () => {
+      appState.currentStage = 0
+      appState.studentName = ''
+      renderApp()
     })
   }
 }
