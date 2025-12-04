@@ -415,6 +415,13 @@ function renderStage4() {
 
 // Firebase에서 제안 불러오기
 async function loadProposalsFromFirebase() {
+  if (!db) {
+    // Firebase가 초기화되지 않았으면 localStorage 사용
+    const proposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
+    appState.allProposals = proposals
+    return proposals
+  }
+  
   try {
     const proposalsRef = ref(db, 'proposals')
     const snapshot = await get(proposalsRef)
@@ -440,6 +447,13 @@ async function loadProposalsFromFirebase() {
 
 // Firebase에서 투표 불러오기
 async function loadVotesFromFirebase() {
+  if (!db) {
+    // Firebase가 초기화되지 않았으면 localStorage 사용
+    const votes = JSON.parse(localStorage.getItem('votes') || '{}')
+    appState.votes = votes
+    return votes
+  }
+  
   try {
     const votesRef = ref(db, 'votes/all')
     const snapshot = await get(votesRef)
@@ -556,6 +570,8 @@ async function renderStage5() {
 
 // 실시간 업데이트 설정
 function setupRealtimeUpdates() {
+  if (!db) return; // Firebase가 초기화되지 않았으면 실시간 업데이트 비활성화
+  
   const proposalsRef = ref(db, 'proposals')
   
   onValue(proposalsRef, (snapshot) => {
@@ -1419,6 +1435,18 @@ function checkVotingComplete() {
 
 // 투표 제출
 async function submitVotes() {
+  if (!db) {
+    // Firebase가 없으면 localStorage에만 저장
+    localStorage.setItem('votes', JSON.stringify(appState.votes))
+    alert('투표가 완료되었습니다! (로컬 저장)')
+    appState.currentStage = 6
+    await renderApp()
+    setTimeout(() => {
+      generateSpeech()
+    }, 500)
+    return
+  }
+  
   try {
     // Firebase에 투표 저장 (전체 투표 데이터에 현재 학생의 투표 추가)
     const allVotesRef = ref(db, 'votes/all')
