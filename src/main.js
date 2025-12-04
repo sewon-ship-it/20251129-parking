@@ -29,23 +29,37 @@ const appState = {
 
 // CSV 파싱 함수
 async function parseCSV(url) {
-  const response = await fetch(url)
-  const text = await response.text()
-  const lines = text.trim().split('\n')
-  const headers = lines[0].split(',')
-  const data = []
-  
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim()) {
-      const values = lines[i].split(',')
-      const obj = {}
-      headers.forEach((header, index) => {
-        obj[header.trim()] = values[index]?.trim() || ''
-      })
-      data.push(obj)
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`CSV 파일을 불러올 수 없습니다: ${response.status} ${response.statusText}`)
     }
+    const text = await response.text()
+    if (!text || text.trim().length === 0) {
+      throw new Error('CSV 파일이 비어있습니다.')
+    }
+    const lines = text.trim().split('\n')
+    if (lines.length === 0) {
+      throw new Error('CSV 파일에 데이터가 없습니다.')
+    }
+    const headers = lines[0].split(',')
+    const data = []
+    
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim()) {
+        const values = lines[i].split(',')
+        const obj = {}
+        headers.forEach((header, index) => {
+          obj[header.trim()] = values[index]?.trim() || ''
+        })
+        data.push(obj)
+      }
+    }
+    return data
+  } catch (error) {
+    console.error(`CSV 파싱 오류 (${url}):`, error)
+    throw error
   }
-  return data
 }
 
 // API Key 확인
@@ -790,15 +804,19 @@ function attachEventListeners() {
       if (appState.studentName) {
         // 데이터 로드
         try {
+          console.log('CSV 파일 로드 시작...')
           appState.parkingData = await parseCSV('/illegal_parking.csv')
+          console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
           appState.cctvData = await parseCSV('/cctv.csv')
+          console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
           appState.currentStage = 1
           renderApp()
           setTimeout(() => {
             renderCharts()
           }, 100)
         } catch (error) {
-          alert('데이터를 불러오는데 실패했습니다: ' + error.message)
+          console.error('데이터 로드 실패:', error)
+          alert('데이터를 불러오는데 실패했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
         }
       }
     })
