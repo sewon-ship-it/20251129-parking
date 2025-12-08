@@ -941,6 +941,7 @@ async function renderStage7() {
 async function renderAdminStage() {
   const proposals = await loadProposalsFromFirebase()
   const votes = await loadVotesFromFirebase()
+  const votingStatus = await getVotingStatus()
   
   // 모든 학생의 제안 요약
   const proposalsSummary = proposals.map((proposal, index) => {
