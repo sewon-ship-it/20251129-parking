@@ -492,10 +492,68 @@ async function loadVotesFromFirebase() {
   }
 }
 
+// 투표 상태 확인 (open/closed)
+async function getVotingStatus() {
+  if (!db) {
+    return localStorage.getItem('votingStatus') || 'open'
+  }
+  
+  try {
+    const statusRef = ref(db, 'votingStatus')
+    const snapshot = await get(statusRef)
+    
+    if (snapshot.exists()) {
+      return snapshot.val()
+    }
+    return 'open' // 기본값은 열림
+  } catch (error) {
+    console.error('투표 상태 확인 실패:', error)
+    return localStorage.getItem('votingStatus') || 'open'
+  }
+}
+
+// 투표 종료 설정
+async function closeVoting() {
+  if (!db) {
+    localStorage.setItem('votingStatus', 'closed')
+    return
+  }
+  
+  try {
+    const statusRef = ref(db, 'votingStatus')
+    await set(statusRef, 'closed')
+    localStorage.setItem('votingStatus', 'closed')
+  } catch (error) {
+    console.error('투표 종료 설정 실패:', error)
+    localStorage.setItem('votingStatus', 'closed')
+  }
+}
+
+// 투표 재개 설정
+async function openVoting() {
+  if (!db) {
+    localStorage.setItem('votingStatus', 'open')
+    return
+  }
+  
+  try {
+    const statusRef = ref(db, 'votingStatus')
+    await set(statusRef, 'open')
+    localStorage.setItem('votingStatus', 'open')
+  } catch (error) {
+    console.error('투표 재개 설정 실패:', error)
+    localStorage.setItem('votingStatus', 'open')
+  }
+}
+
 // 5단계: 동료 평가/투표
 async function renderStage5() {
   // Firebase에서 모든 제안 불러오기
   const proposals = await loadProposalsFromFirebase()
+  
+  // 투표 상태 확인
+  const votingStatus = await getVotingStatus()
+  const isVotingClosed = votingStatus === 'closed'
   
   if (proposals.length === 0) {
     return `
@@ -516,6 +574,15 @@ async function renderStage5() {
         <h1 class="stage-title">🗳️ 5단계: 동료 평가/투표</h1>
         <p class="stage-subtitle">친구들의 해결방안을 평가해주세요</p>
       </div>
+      
+      ${isVotingClosed ? `
+        <div class="question-card" style="background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%); border-left: 5px solid #f44336; margin-bottom: 30px;">
+          <h3 style="color: #c62828; margin-bottom: 10px;">⏰ 투표가 종료되었습니다</h3>
+          <p style="color: #b71c1c; line-height: 1.8;">
+            교사님이 투표를 종료하셨습니다. 더 이상 투표할 수 없으며, 현재 결과가 최종 결과로 확정되었습니다.
+          </p>
+        </div>
+      ` : ''}
       
       <div id="voting-section">
         ${proposals.map((proposal, index) => `
@@ -543,25 +610,29 @@ async function renderStage5() {
                   <td>
                     ${[1, 2, 3, 4, 5].map(score => `
                       <button class="rating-btn" data-proposal="${index}" 
-                              data-criteria="effect" data-score="${score}">${score}</button>
+                              data-criteria="effect" data-score="${score}" 
+                              ${isVotingClosed ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>${score}</button>
                     `).join('')}
                   </td>
                   <td>
                     ${[1, 2, 3, 4, 5].map(score => `
                       <button class="rating-btn" data-proposal="${index}" 
-                              data-criteria="cost" data-score="${score}">${score}</button>
+                              data-criteria="cost" data-score="${score}" 
+                              ${isVotingClosed ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>${score}</button>
                     `).join('')}
                   </td>
                   <td>
                     ${[1, 2, 3, 4, 5].map(score => `
                       <button class="rating-btn" data-proposal="${index}" 
-                              data-criteria="practical" data-score="${score}">${score}</button>
+                              data-criteria="practical" data-score="${score}" 
+                              ${isVotingClosed ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>${score}</button>
                     `).join('')}
                   </td>
                   <td>
                     ${[1, 2, 3, 4, 5].map(score => `
                       <button class="rating-btn" data-proposal="${index}" 
-                              data-criteria="harmless" data-score="${score}">${score}</button>
+                              data-criteria="harmless" data-score="${score}" 
+                              ${isVotingClosed ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>${score}</button>
                     `).join('')}
                   </td>
                 </tr>
@@ -573,12 +644,18 @@ async function renderStage5() {
       
       <div style="display: flex; gap: 10px; margin-top: 20px;">
         <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
-        <button class="btn" id="submit-votes-btn" disabled>투표 완료하기</button>
+        <button class="btn" id="submit-votes-btn" ${isVotingClosed ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : 'disabled'}>투표 완료하기</button>
       </div>
       
-      <div style="text-align: center; margin-top: 30px; color: var(--winter-blue-600); font-size: 0.9em;">
-        💡 다른 학생들이 제안을 추가하면 자동으로 업데이트됩니다!
-      </div>
+      ${isVotingClosed ? `
+        <div style="text-align: center; margin-top: 30px; color: #f44336; font-size: 0.9em; font-weight: 600;">
+          ⏰ 투표가 종료되어 더 이상 투표할 수 없습니다.
+        </div>
+      ` : `
+        <div style="text-align: center; margin-top: 30px; color: var(--winter-blue-600); font-size: 0.9em;">
+          💡 다른 학생들이 제안을 추가하면 자동으로 업데이트됩니다!
+        </div>
+      `}
     </div>
   `
   
@@ -624,6 +701,10 @@ async function renderStage6() {
   
   // Firebase에서 투표 결과 가져오기
   const voteResults = await loadVotesFromFirebase()
+  
+  // 투표 종료 상태 확인
+  const votingStatus = await getVotingStatus()
+  const isVotingClosed = votingStatus === 'closed'
   
   // 각 제안의 총점 계산
   // 투표 데이터 구조: { [studentName]: { [proposalIndex]: { effect, cost, practical, harmless } } }
@@ -683,6 +764,22 @@ async function renderStage6() {
         <h1 class="stage-title">🏆 6단계: 1등 해결방안 연설문</h1>
         <p class="stage-subtitle">가장 높은 점수를 받은 해결방안입니다!</p>
       </div>
+      
+      ${isVotingClosed ? `
+        <div class="question-card" style="background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%); border-left: 5px solid #ff9800; margin-bottom: 30px;">
+          <h3 style="color: #e65100; margin-bottom: 10px;">✅ 최종 확정 결과</h3>
+          <p style="color: #bf360c; line-height: 1.8;">
+            교사님이 투표를 종료하여 현재 결과가 최종 결과로 확정되었습니다.
+          </p>
+        </div>
+      ` : `
+        <div class="question-card" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-left: 5px solid var(--winter-blue-500); margin-bottom: 30px;">
+          <h3 style="color: var(--winter-blue-700); margin-bottom: 10px;">ℹ️ 실시간 결과</h3>
+          <p style="color: var(--winter-blue-900); line-height: 1.8;">
+            투표가 아직 진행 중입니다. 결과는 실시간으로 업데이트되며, 교사님이 투표를 종료하면 최종 결과로 확정됩니다.
+          </p>
+        </div>
+      `}
       
       <div class="speech-container">
         <div class="speech-title">🎉 1등: ${winner.proposal.name}님의 해결방안</div>
@@ -900,6 +997,15 @@ async function renderAdminStage() {
         <button class="btn" id="refresh-data-btn" style="background: linear-gradient(135deg, var(--winter-blue-500) 0%, var(--winter-blue-600) 100%); color: white;">
           🔄 데이터 새로고침
         </button>
+        ${votingStatus === 'open' ? `
+          <button class="btn" id="close-voting-btn" style="background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white;">
+            ⏰ 투표 종료 및 결과 확정
+          </button>
+        ` : `
+          <button class="btn" id="open-voting-btn" style="background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%); color: white;">
+            🔓 투표 재개
+          </button>
+        `}
         <button class="btn" id="clear-data-btn" style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); color: white;">
           🗑️ 모든 데이터 초기화
         </button>
@@ -907,6 +1013,22 @@ async function renderAdminStage() {
           ← 메인으로 돌아가기
         </button>
       </div>
+      
+      ${votingStatus === 'closed' ? `
+        <div class="question-card" style="background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%); border-left: 5px solid #ff9800; margin-bottom: 30px;">
+          <h3 style="color: #e65100; margin-bottom: 10px;">✅ 투표가 종료되었습니다</h3>
+          <p style="color: #bf360c; line-height: 1.8;">
+            현재 결과가 최종 결과로 확정되었습니다. 학생들은 더 이상 투표할 수 없으며, 6단계에서 확정된 1등 결과를 볼 수 있습니다.
+          </p>
+        </div>
+      ` : `
+        <div class="question-card" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-left: 5px solid #4caf50; margin-bottom: 30px;">
+          <h3 style="color: #2e7d32; margin-bottom: 10px;">🟢 투표 진행 중</h3>
+          <p style="color: #1b5e20; line-height: 1.8;">
+            학생들이 투표를 진행하고 있습니다. 투표를 종료하려면 "투표 종료 및 결과 확정" 버튼을 클릭하세요.
+          </p>
+        </div>
+      `}
       
       <div class="question-card" style="margin-bottom: 30px;">
         <h3 style="color: var(--winter-blue-700); margin-bottom: 20px;">📊 전체 통계</h3>
@@ -1348,7 +1470,14 @@ function attachEventListeners() {
   // 5단계: 투표
   const ratingBtns = document.querySelectorAll('.rating-btn')
   ratingBtns.forEach(btn => {
-    btn.addEventListener('click', function() {
+    btn.addEventListener('click', async function() {
+      // 투표 종료 상태 확인
+      const votingStatus = await getVotingStatus()
+      if (votingStatus === 'closed') {
+        alert('투표가 이미 종료되었습니다. 더 이상 투표할 수 없습니다.')
+        return
+      }
+      
       const proposalIndex = parseInt(this.dataset.proposal)
       const criteria = this.dataset.criteria
       const score = parseInt(this.dataset.score)
@@ -1425,6 +1554,30 @@ function attachEventListeners() {
   if (clearDataBtn) {
     clearDataBtn.addEventListener('click', async () => {
       await clearAllData()
+    })
+  }
+  
+  // 투표 종료 버튼
+  const closeVotingBtn = document.getElementById('close-voting-btn')
+  if (closeVotingBtn) {
+    closeVotingBtn.addEventListener('click', async () => {
+      if (confirm('투표를 종료하고 결과를 확정하시겠습니까?\n\n종료 후에는 학생들이 더 이상 투표할 수 없습니다.')) {
+        await closeVoting()
+        alert('✅ 투표가 종료되었습니다. 현재 결과가 최종 결과로 확정되었습니다.')
+        await renderApp()
+      }
+    })
+  }
+  
+  // 투표 재개 버튼
+  const openVotingBtn = document.getElementById('open-voting-btn')
+  if (openVotingBtn) {
+    openVotingBtn.addEventListener('click', async () => {
+      if (confirm('투표를 다시 시작하시겠습니까?\n\n학생들이 다시 투표할 수 있게 됩니다.')) {
+        await openVoting()
+        alert('✅ 투표가 다시 시작되었습니다.')
+        await renderApp()
+      }
     })
   }
   
@@ -1764,6 +1917,13 @@ function checkVotingComplete() {
 
 // 투표 제출
 async function submitVotes() {
+  // 투표 종료 상태 확인
+  const votingStatus = await getVotingStatus()
+  if (votingStatus === 'closed') {
+    alert('투표가 이미 종료되었습니다. 더 이상 투표할 수 없습니다.')
+    return
+  }
+  
   if (!db) {
     // Firebase가 없으면 localStorage에만 저장
     localStorage.setItem('votes', JSON.stringify(appState.votes))
