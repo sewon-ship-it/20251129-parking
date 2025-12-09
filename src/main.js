@@ -293,13 +293,13 @@ function renderStage1() {
   `
 }
 
-// 2단계: 데이터 분석 문제들
+// 2단계: 문제의 원인 예상하기
 function renderStage2() {
   return `
     <div class="stage-container">
       <div class="stage-header">
-        <h1 class="stage-title">📐 2단계: 데이터 분석하기</h1>
-        <p class="stage-subtitle">데이터를 보고 문제를 확인해봅시다</p>
+        <h1 class="stage-title">📐 2단계: 문제의 원인 예상하기</h1>
+        <p class="stage-subtitle">데이터를 보고 문제의 원인을 예상해봅시다</p>
       </div>
       
       <div class="question-card">
@@ -320,7 +320,7 @@ function renderStage2() {
   `
 }
 
-// 3단계: 문제의 원인 생각하기
+// 3단계: 교과서와 내 예상 비교하기
 function renderStage3() {
   const expectedAnswers = [
     '주차 공간이 부족해서',
@@ -333,8 +333,8 @@ function renderStage3() {
   return `
     <div class="stage-container">
       <div class="stage-header">
-        <h1 class="stage-title">🤔 3단계: 문제의 원인 생각하기</h1>
-        <p class="stage-subtitle">불법 주정차 문제가 발생하는 원인을 생각해봅시다</p>
+        <h1 class="stage-title">🤔 3단계: 교과서와 내 예상 비교하기</h1>
+        <p class="stage-subtitle">교과서 내용과 내가 예상한 원인을 비교해봅시다</p>
       </div>
       
       <div class="question-card">
@@ -857,15 +857,15 @@ async function renderStage7() {
   const total = effect + cost + practical + harmless
   
   const scores = [
-    { label: '효과가 큰가요?', value: effect, avg: parseFloat(avgEffect), max: 5, key: 'effect' },
-    { label: '비용이 적게 드나요?', value: cost, avg: parseFloat(avgCost), max: 5, key: 'cost' },
-    { label: '실천할 수 있나요?', value: practical, avg: parseFloat(avgPractical), max: 5, key: 'practical' },
-    { label: '피해를 주지 않나요?', value: harmless, avg: parseFloat(avgHarmless), max: 5, key: 'harmless' }
+    { label: '효과가 큰가요?', value: effect, avg: parseFloat(avgEffect), max: 5, key: 'effect', badge: '문제 해결력 배지', badgeIcon: '🎯' },
+    { label: '비용이 적게 드나요?', value: cost, avg: parseFloat(avgCost), max: 5, key: 'cost', badge: '알뜰 아이디어 배지', badgeIcon: '💰' },
+    { label: '실천할 수 있나요?', value: practical, avg: parseFloat(avgPractical), max: 5, key: 'practical', badge: '바로 실천 배지', badgeIcon: '⚡' },
+    { label: '피해를 주지 않나요?', value: harmless, avg: parseFloat(avgHarmless), max: 5, key: 'harmless', badge: '모두에게 좋아요 배지', badgeIcon: '❤️' }
   ]
   
   // 가장 강점인 부분 찾기 (평균 점수 기준)
   const maxAvgScore = Math.max(...scores.map(s => s.avg))
-  const strengths = scores.filter(s => s.avg === maxAvgScore && s.avg > 0).map(s => s.label)
+  const strengths = scores.filter(s => s.avg === maxAvgScore && s.avg > 0).map(s => ({ label: s.label, badge: s.badge, badgeIcon: s.badgeIcon }))
   const strengthKeys = scores.filter(s => s.avg === maxAvgScore && s.avg > 0).map(s => s.key)
   
   return `
@@ -884,18 +884,25 @@ async function renderStage7() {
         ${scores.map((score, index) => {
           const isStrength = strengthKeys.includes(score.key)
           return `
-          <div class="dashboard-card ${isStrength ? 'strength-badge' : ''}" style="position: relative;">
+          <div class="dashboard-card ${isStrength ? 'strength-badge' : ''}" style="position: relative; ${isStrength ? 'border: 3px solid #ff9800; box-shadow: 0 6px 20px rgba(255, 152, 0, 0.3);' : ''}">
             ${isStrength ? `
-              <div class="strength-badge-icon" style="position: absolute; top: -10px; right: -10px; background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4); z-index: 10; border: 3px solid white;">
-                <span style="font-size: 24px;">⭐</span>
+              <div class="strength-badge-icon" style="position: absolute; top: -15px; right: -15px; background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(255, 215, 0, 0.5); z-index: 10; border: 3px solid white; animation: pulse 2s infinite;">
+                <span style="font-size: 28px;">${score.badgeIcon}</span>
               </div>
             ` : ''}
-            <h3>${score.label}</h3>
-            <div class="dashboard-score" style="${isStrength ? 'color: #ff9800; font-weight: 700;' : ''}">${score.avg}</div>
-            <div class="dashboard-label">평균 / ${score.max}점</div>
-            <div style="margin-top: 8px; font-size: 0.85em; color: var(--winter-blue-600);">
-              (${voteCount}명 평가)
+            <h3 style="margin-bottom: 15px; font-size: 1.2em; ${isStrength ? 'color: #ff9800; font-weight: 700;' : ''}">${score.label}</h3>
+            <div class="dashboard-score" style="font-size: 2.5em; ${isStrength ? 'color: #ff9800; font-weight: 700;' : 'color: var(--winter-blue-700);'}">${score.avg}</div>
+            <div class="dashboard-label" style="font-size: 1.1em; margin-top: 5px; ${isStrength ? 'color: #e65100; font-weight: 600;' : ''}">평균 ${score.avg}점 / ${score.max}점 만점</div>
+            <div style="margin-top: 10px; font-size: 0.9em; color: var(--winter-blue-600); font-weight: 500;">
+              ${voteCount}명이 평가함
             </div>
+            ${isStrength ? `
+              <div style="margin-top: 15px; padding: 10px; background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%); border-radius: 8px; border: 2px solid #ff9800;">
+                <div style="font-size: 1.1em; font-weight: 700; color: #e65100; text-align: center;">
+                  ${score.badgeIcon} ${score.badge}
+                </div>
+              </div>
+            ` : ''}
           </div>
         `}).join('')}
         
@@ -911,20 +918,22 @@ async function renderStage7() {
       
       ${strengths.length > 0 ? `
         <div class="question-card" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); 
-                                         border-left: 5px solid #4caf50; margin-top: 30px;">
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-            <span style="font-size: 2em;">⭐</span>
-            <h3 style="color: #2e7d32; margin: 0;">가장 강점인 부분</h3>
+                                         border-left: 5px solid #4caf50; margin-top: 30px; padding: 25px;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <span style="font-size: 2.5em;">⭐</span>
+            <h3 style="color: #2e7d32; margin: 0; font-size: 1.5em;">가장 강점인 부분</h3>
           </div>
-          <ul style="list-style: none; padding: 0;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 20px;">
             ${strengths.map(strength => `
-              <li style="padding: 12px; margin: 8px 0; font-size: 1.1em; color: #1b5e20; background: white; border-radius: 8px; border-left: 4px solid #4caf50;">
-                🏆 ${strength}
-              </li>
+              <div style="padding: 20px; font-size: 1.2em; color: #1b5e20; background: white; border-radius: 12px; border-left: 5px solid #4caf50; box-shadow: 0 4px 12px rgba(76, 175, 80, 0.2); text-align: center;">
+                <div style="font-size: 2em; margin-bottom: 10px;">${strength.badgeIcon}</div>
+                <div style="font-weight: 700; margin-bottom: 5px;">${strength.badge}</div>
+                <div style="font-size: 0.9em; color: #2e7d32;">${strength.label}</div>
+              </div>
             `).join('')}
-          </ul>
-          <p style="margin-top: 15px; color: #2e7d32; font-size: 0.9em; font-style: italic;">
-            이 항목에서 가장 높은 평균 점수를 받았습니다!
+          </div>
+          <p style="margin-top: 20px; color: #2e7d32; font-size: 1em; font-weight: 600; text-align: center; padding: 15px; background: rgba(255, 255, 255, 0.7); border-radius: 8px;">
+            🎉 이 항목에서 가장 높은 평균 점수(${maxAvgScore}점)를 받았습니다!
           </p>
         </div>
       ` : ''}
