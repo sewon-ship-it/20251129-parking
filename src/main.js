@@ -1233,12 +1233,47 @@ function attachEventListeners() {
     
     startBtn.addEventListener('click', async () => {
       if (appState.studentName) {
+        // 투표 상태 확인
+        const votingStatus = await getVotingStatus()
+        const isVotingClosed = votingStatus === 'closed'
+        
         // 기존 진행 상태 확인
         const proposals = await loadProposalsFromFirebase()
         const votes = await loadVotesFromFirebase()
         const existingProposal = proposals.find(p => p.name === appState.studentName)
         const hasVoted = votes[appState.studentName] && Object.keys(votes[appState.studentName]).length > 0
         
+        // 투표가 종료된 경우
+        if (isVotingClosed) {
+          // 새로운 학생 (기존 제안/투표 없음) → 바로 결과 확인
+          if (!existingProposal && !hasVoted) {
+            // 1등 결과 보기로 이동
+            appState.currentStage = 6
+            await renderApp()
+            setTimeout(() => {
+              generateSpeech()
+            }, 500)
+            return
+          }
+          
+          // 기존 학생 → 대시보드 또는 결과 확인
+          if (hasVoted) {
+            // 투표 완료 → 대시보드
+            appState.currentStage = 7
+            await renderApp()
+            return
+          } else if (existingProposal) {
+            // 제안만 있음 → 1등 결과 보기
+            appState.currentStage = 6
+            await renderApp()
+            setTimeout(() => {
+              generateSpeech()
+            }, 500)
+            return
+          }
+        }
+        
+        // 투표가 진행 중인 경우 (기존 로직)
         // 기존 진행 상태가 있는 경우
         if (existingProposal || hasVoted) {
           let message = `${appState.studentName}님, 이전에 진행한 내용이 있습니다.\n\n`
