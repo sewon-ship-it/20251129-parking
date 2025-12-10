@@ -1233,7 +1233,47 @@ function attachEventListeners() {
     
     startBtn.addEventListener('click', async () => {
       if (appState.studentName) {
-        // 데이터 로드
+        // 기존 진행 상태 확인
+        const proposals = await loadProposalsFromFirebase()
+        const votes = await loadVotesFromFirebase()
+        const existingProposal = proposals.find(p => p.name === appState.studentName)
+        const hasVoted = votes[appState.studentName] && Object.keys(votes[appState.studentName]).length > 0
+        
+        // 기존 진행 상태가 있는 경우
+        if (existingProposal || hasVoted) {
+          let message = `${appState.studentName}님, 이전에 진행한 내용이 있습니다.\n\n`
+          let options = []
+          
+          if (hasVoted) {
+            message += '✅ 투표 완료\n'
+            options.push('대시보드 보기 (7단계)')
+          } else if (existingProposal) {
+            message += '✅ 제안 완료 (투표 미완료)\n'
+            options.push('투표하기 (5단계)')
+          }
+          
+          message += '\n어디서부터 시작하시겠습니까?'
+          
+          const choice = confirm(message + '\n\n확인 = ' + (options[0] || '대시보드') + '\n취소 = 처음부터 시작')
+          
+          if (choice) {
+            // 기존 진행 상태로 이동
+            if (hasVoted) {
+              // 투표 완료 → 대시보드
+              appState.currentStage = 7
+              await renderApp()
+              return
+            } else if (existingProposal) {
+              // 제안 완료 → 투표
+              appState.currentStage = 5
+              await renderApp()
+              return
+            }
+          }
+          // 취소하면 처음부터 시작 (아래 코드 계속 실행)
+        }
+        
+        // 처음부터 시작하거나 기존 진행 상태가 없는 경우
         try {
           console.log('CSV 파일 로드 시작...')
           appState.parkingData = await parseCSV('/illegal_parking.csv')
