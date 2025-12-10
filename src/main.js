@@ -581,8 +581,18 @@ async function renderStage5() {
           <p style="color: #b71c1c; line-height: 1.8;">
             교사님이 투표를 종료하셨습니다. 더 이상 투표할 수 없으며, 현재 결과가 최종 결과로 확정되었습니다.
           </p>
+          <p style="color: #d32f2f; line-height: 1.8; margin-top: 10px; font-size: 0.9em; font-style: italic;">
+            💡 교사님이 투표를 재개하면 다시 투표할 수 있습니다.
+          </p>
         </div>
-      ` : ''}
+      ` : `
+        <div class="question-card" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-left: 5px solid #4caf50; margin-bottom: 30px;">
+          <h3 style="color: #2e7d32; margin-bottom: 10px;">🟢 투표 진행 중</h3>
+          <p style="color: #1b5e20; line-height: 1.8;">
+            현재 투표가 진행 중입니다. 친구들의 해결방안을 평가해주세요!
+          </p>
+        </div>
+      `}
       
       <div id="voting-section">
         ${proposals.map((proposal, index) => `
@@ -1054,6 +1064,9 @@ async function renderAdminStage() {
           <h3 style="color: #e65100; margin-bottom: 10px;">✅ 투표가 종료되었습니다</h3>
           <p style="color: #bf360c; line-height: 1.8;">
             현재 결과가 최종 결과로 확정되었습니다. 학생들은 더 이상 투표할 수 없으며, 6단계에서 확정된 1등 결과를 볼 수 있습니다.
+          </p>
+          <p style="color: #e65100; line-height: 1.8; margin-top: 10px; font-size: 0.9em; font-style: italic;">
+            💡 "투표 재개" 버튼을 누르면 학생들이 다시 투표할 수 있습니다. (데모 목적으로 사용 가능)
           </p>
         </div>
       ` : `
@@ -1608,9 +1621,9 @@ function attachEventListeners() {
   const openVotingBtn = document.getElementById('open-voting-btn')
   if (openVotingBtn) {
     openVotingBtn.addEventListener('click', async () => {
-      if (confirm('투표를 다시 시작하시겠습니까?\n\n학생들이 다시 투표할 수 있게 됩니다.')) {
+      if (confirm('투표를 다시 시작하시겠습니까?\n\n학생들이 다시 투표할 수 있게 되며, 6단계의 1등 결과는 숨겨집니다.\n\n(데모 목적으로 여러 번 반복할 수 있습니다)')) {
         await openVoting()
-        alert('✅ 투표가 다시 시작되었습니다.')
+        alert('✅ 투표가 다시 시작되었습니다!\n\n학생들이 다시 투표할 수 있으며, 6단계에서는 투표 진행 중 메시지가 표시됩니다.')
         await renderApp()
       }
     })
