@@ -758,6 +758,40 @@ async function renderStage6() {
     `
   }
   
+  // 투표가 진행 중일 때는 1등을 표시하지 않음
+  if (!isVotingClosed) {
+    return `
+      <div class="stage-container">
+        <div class="stage-header">
+          <h1 class="stage-title">🏆 6단계: 1등 해결방안 연설문</h1>
+          <p class="stage-subtitle">최종 결과는 투표 종료 후 확인할 수 있습니다</p>
+        </div>
+        
+        <div class="question-card" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-left: 5px solid var(--winter-blue-500); margin-bottom: 30px; text-align: center; padding: 40px;">
+          <div style="font-size: 4em; margin-bottom: 20px;">⏳</div>
+          <h3 style="color: var(--winter-blue-700); margin-bottom: 15px; font-size: 1.5em;">투표 진행 중</h3>
+          <p style="color: var(--winter-blue-900); line-height: 2; font-size: 1.1em; margin-bottom: 10px;">
+            아직 투표가 진행 중입니다.<br>
+            모든 학생들이 투표를 완료하면,<br>
+            교사님이 투표를 종료하고 최종 결과를 확정합니다.
+          </p>
+          <p style="color: var(--winter-blue-700); font-size: 1em; margin-top: 20px; font-weight: 600;">
+            📊 현재까지 ${Object.keys(voteResults).length}명이 투표했습니다
+          </p>
+          <p style="color: var(--winter-blue-600); font-size: 0.9em; margin-top: 10px;">
+            투표 종료 후 1등 해결방안을 확인할 수 있습니다!
+          </p>
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
+          <button class="btn" id="exit-btn">나가기</button>
+        </div>
+      </div>
+    `
+  }
+  
+  // 투표가 종료되었을 때만 1등 결과 표시
   return `
     <div class="stage-container">
       <div class="stage-header">
@@ -765,26 +799,17 @@ async function renderStage6() {
         <p class="stage-subtitle">가장 높은 점수를 받은 해결방안입니다!</p>
       </div>
       
-      ${isVotingClosed ? `
-        <div class="question-card" style="background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%); border-left: 5px solid #ff9800; margin-bottom: 30px;">
-          <h3 style="color: #e65100; margin-bottom: 10px;">✅ 최종 확정 결과</h3>
-          <p style="color: #bf360c; line-height: 1.8;">
-            교사님이 투표를 종료하여 현재 결과가 최종 결과로 확정되었습니다.
-          </p>
-        </div>
-      ` : `
-        <div class="question-card" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-left: 5px solid var(--winter-blue-500); margin-bottom: 30px;">
-          <h3 style="color: var(--winter-blue-700); margin-bottom: 10px;">ℹ️ 실시간 결과</h3>
-          <p style="color: var(--winter-blue-900); line-height: 1.8;">
-            투표가 아직 진행 중입니다. 결과는 실시간으로 업데이트되며, 교사님이 투표를 종료하면 최종 결과로 확정됩니다.
-          </p>
-        </div>
-      `}
+      <div class="question-card" style="background: linear-gradient(135deg, #fff9e6 0%, #ffe6cc 100%); border-left: 5px solid #ff9800; margin-bottom: 30px;">
+        <h3 style="color: #e65100; margin-bottom: 10px;">✅ 최종 확정 결과</h3>
+        <p style="color: #bf360c; line-height: 1.8;">
+          교사님이 투표를 종료하여 현재 결과가 최종 결과로 확정되었습니다.
+        </p>
+      </div>
       
       <div class="speech-container">
         <div class="speech-title">🎉 1등: ${winner.proposal.name}님의 해결방안</div>
         <div style="text-align: center; margin: 30px 0; font-size: 1.3em; color: var(--winter-blue-600);">
-          총점: ${winner.total}점
+          총점: ${winner.total}점 (${winner.voteCount}명 평가)
         </div>
         <div class="speech-content" id="speech-content">
           <div class="loading">
