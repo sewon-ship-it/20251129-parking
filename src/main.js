@@ -267,7 +267,7 @@ function renderStage1() {
             <p style="font-weight: 600; margin-bottom: 15px; color: var(--winter-blue-700);">민원이 어떻게 될까요?</p>
             <ul class="question-options" style="margin-top: 15px;">
               <li class="question-option stage1-q1" data-answer="늘어난다" data-correct="false">늘어난다</li>
-              <li class="question-option stage1-q1" data-answer="줄어든다" data-correct="false">줄어든다</li>
+              <li class="question-option stage1-q1" data-answer="줄어든다" data-correct="true">줄어든다</li>
             </ul>
           </div>
           <div style="margin-top: 25px;">
@@ -1487,9 +1487,24 @@ function attachEventListeners() {
       // 피드백 표시
       if (questionType === 'q1') {
         appState.questionAnswers.question1 = this.dataset.answer
-        appState.questionAnswers.question1Correct = true // 선택형 문제이므로 항상 true
+        appState.questionAnswers.question1Correct = isCorrect
         appState.answers.question1 = this.dataset.answer
-        // 피드백은 표시하지 않음 (주관식 예상 문제)
+        // 선택한 답변에 따라 시각적 피드백 표시
+        if (isCorrect) {
+          this.classList.add('correct-answer')
+        } else {
+          this.classList.add('wrong-answer')
+          // 정답 표시
+          parent.querySelectorAll('.question-option').forEach(opt => {
+            if (opt.dataset.correct === 'true') {
+              opt.classList.add('correct-answer')
+            }
+          })
+        }
+        // 이유 검증 (이미 입력되어 있으면)
+        if (appState.answers.predictionReason) {
+          validatePredictionReason()
+        }
       } else if (questionType === 'q2') {
         appState.questionAnswers.question2 = this.dataset.answer
         appState.questionAnswers.question2Correct = isCorrect
@@ -1540,6 +1555,16 @@ function attachEventListeners() {
     predictionReason.addEventListener('input', () => {
       appState.answers.predictionReason = predictionReason.value.trim()
       checkStage1Complete()
+      // 이유 입력 시 검증
+      if (appState.answers.predictionReason.length > 0 && appState.answers.question1) {
+        validatePredictionReason()
+      }
+    })
+    // 포커스가 벗어날 때도 검증
+    predictionReason.addEventListener('blur', () => {
+      if (appState.answers.predictionReason.length > 0 && appState.answers.question1) {
+        validatePredictionReason()
+      }
     })
   }
   
@@ -1833,6 +1858,58 @@ function checkStage2Complete() {
   }
 }
 
+// 예상 이유 검증 함수
+function validatePredictionReason() {
+  const selectedAnswer = appState.answers.question1 || appState.questionAnswers.question1
+  const reason = appState.answers.predictionReason || ''
+  const feedbackEl = document.getElementById('q1-feedback')
+  
+  if (!selectedAnswer || !reason || !feedbackEl) return
+  
+  const reasonLower = reason.toLowerCase()
+  
+  // 줄어든다 관련 키워드
+  const decreaseKeywords = ['줄어', '감소', '줄어들', '줄어드는', '줄어들었', '줄어들고', '줄어들어', '2022년부터', '최근 몇 년간', '계속 줄어', '줄어드는 추세', '줄어들었기', '줄어들었으', '줄어들었던']
+  
+  // 늘어난다 관련 키워드
+  const increaseKeywords = ['늘어', '증가', '늘어나', '늘어나는', '늘어났', '늘어나고', '늘어나서', '계속 늘어', '늘어나는 추세', '늘어났기', '늘어났으', '늘어났던']
+  
+  const hasDecreaseKeyword = decreaseKeywords.some(keyword => reasonLower.includes(keyword.toLowerCase()))
+  const hasIncreaseKeyword = increaseKeywords.some(keyword => reasonLower.includes(keyword.toLowerCase()))
+  
+  if (selectedAnswer === '줄어든다') {
+    // 줄어든다는 선택했을 때
+    if (hasDecreaseKeyword && !hasIncreaseKeyword) {
+      // 정답: 줄어든다는 내용
+      feedbackEl.innerHTML = '<span style="color: #4caf50;">✓ 정답입니다! 그래프를 보면 최근 몇 년간 민원이 줄어드는 추세입니다.</span>'
+      appState.answers.predictionReasonCorrect = true
+    } else if (hasIncreaseKeyword) {
+      // 틀림: 늘어난다는 내용 (반대 내용)
+      feedbackEl.innerHTML = '<span style="color: #f44336;">✗ 틀렸습니다. 그래프를 보면 최근 몇 년간 민원이 줄어드는 추세입니다. 다시 생각해보세요.</span>'
+      appState.answers.predictionReasonCorrect = false
+    } else {
+      // 불명확하지만 줄어든다는 선택했으므로 일단 정답으로 처리
+      feedbackEl.innerHTML = '<span style="color: #4caf50;">✓ 정답입니다! 그래프를 보면 최근 몇 년간 민원이 줄어드는 추세입니다.</span>'
+      appState.answers.predictionReasonCorrect = true
+    }
+  } else if (selectedAnswer === '늘어난다') {
+    // 늘어난다는 선택했을 때 (선택 자체가 틀림)
+    if (hasIncreaseKeyword && !hasDecreaseKeyword) {
+      // 이유는 일치하지만 선택이 틀림
+      feedbackEl.innerHTML = '<span style="color: #f44336;">✗ 틀렸습니다. 그래프를 보면 최근 몇 년간 민원이 줄어드는 추세입니다. "줄어든다"를 선택하고 다시 생각해보세요.</span>'
+      appState.answers.predictionReasonCorrect = false
+    } else if (hasDecreaseKeyword) {
+      // 선택과 이유가 모두 반대
+      feedbackEl.innerHTML = '<span style="color: #f44336;">✗ 틀렸습니다. 그래프를 보면 최근 몇 년간 민원이 줄어드는 추세입니다. "줄어든다"를 선택하고 다시 생각해보세요.</span>'
+      appState.answers.predictionReasonCorrect = false
+    } else {
+      // 불명확
+      feedbackEl.innerHTML = '<span style="color: #f44336;">✗ 틀렸습니다. 그래프를 보면 최근 몇 년간 민원이 줄어드는 추세입니다. "줄어든다"를 선택하고 다시 생각해보세요.</span>'
+      appState.answers.predictionReasonCorrect = false
+    }
+  }
+}
+
 // 저장된 질문 답변 복원
 function restoreQuestionAnswers() {
   // 1단계 질문 복원
@@ -1841,6 +1918,17 @@ function restoreQuestionAnswers() {
     q1Options.forEach(opt => {
       if (opt.dataset.answer === appState.questionAnswers.question1) {
         opt.classList.add('selected')
+        if (opt.dataset.correct === 'true') {
+          opt.classList.add('correct-answer')
+        } else {
+          opt.classList.add('wrong-answer')
+          // 정답 표시
+          q1Options.forEach(o => {
+            if (o.dataset.correct === 'true') {
+              o.classList.add('correct-answer')
+            }
+          })
+        }
       }
     })
   }
@@ -1850,6 +1938,10 @@ function restoreQuestionAnswers() {
     const predictionReasonEl = document.getElementById('prediction-reason')
     if (predictionReasonEl) {
       predictionReasonEl.value = appState.answers.predictionReason
+      // 복원 후 검증
+      if (appState.answers.question1) {
+        validatePredictionReason()
+      }
     }
   }
   
