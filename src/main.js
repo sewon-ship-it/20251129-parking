@@ -259,15 +259,23 @@ function renderStage1() {
         <h3 style="color: #e65100; margin-bottom: 20px;">📝 데이터 분석 문제</h3>
         
         <div style="margin-bottom: 25px;">
-          <div class="question-title">문제 1: 꺾은선 그래프를 보고 답하세요</div>
+          <div class="question-title">문제 1: 꺾은선 그래프를 보고 예상해보세요</div>
           <p style="margin: 15px 0; font-size: 1.1em;">
-            전년도보다 민원이 가장 많이 줄어든 해는 언제인가요?
+            2025년도에는 2024년도보다 민원이 어떨지 될까요? 그렇게 생각한 이유도 쓰세요.
           </p>
-          <ul class="question-options" style="margin-top: 15px;">
-            <li class="question-option stage1-q1" data-answer="2020년" data-correct="true">2020년</li>
-            <li class="question-option stage1-q1" data-answer="2021년" data-correct="false">2021년</li>
-            <li class="question-option stage1-q1" data-answer="2024년" data-correct="false">2024년</li>
-          </ul>
+          <div style="margin-top: 20px;">
+            <p style="font-weight: 600; margin-bottom: 15px; color: var(--winter-blue-700);">민원이 어떻게 될까요?</p>
+            <ul class="question-options" style="margin-top: 15px;">
+              <li class="question-option stage1-q1" data-answer="늘어난다" data-correct="false">늘어난다</li>
+              <li class="question-option stage1-q1" data-answer="줄어든다" data-correct="false">줄어든다</li>
+            </ul>
+          </div>
+          <div style="margin-top: 25px;">
+            <p style="font-weight: 600; margin-bottom: 15px; color: var(--winter-blue-700);">그렇게 생각한 이유를 쓰세요:</p>
+            <textarea id="prediction-reason" class="input-field" 
+                      placeholder="예: 그래프를 보면 최근 몇 년간 민원이 계속 증가하는 경향이 있어서..."
+                      style="min-height: 100px;">${appState.answers.predictionReason || ''}</textarea>
+          </div>
           <div id="q1-feedback" style="margin-top: 15px; font-weight: 600;"></div>
         </div>
         
@@ -1479,14 +1487,9 @@ function attachEventListeners() {
       // 피드백 표시
       if (questionType === 'q1') {
         appState.questionAnswers.question1 = this.dataset.answer
-        appState.questionAnswers.question1Correct = isCorrect
-        const feedbackEl = document.getElementById('q1-feedback')
-        if (feedbackEl) {
-          feedbackEl.innerHTML = isCorrect 
-            ? '<span style="color: #4caf50;">✓ 정답입니다! 2020년 민원이 전년 대비 가장 많이 줄어들었습니다.</span>'
-            : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 2020년입니다.</span>'
-        }
+        appState.questionAnswers.question1Correct = true // 선택형 문제이므로 항상 true
         appState.answers.question1 = this.dataset.answer
+        // 피드백은 표시하지 않음 (주관식 예상 문제)
       } else if (questionType === 'q2') {
         appState.questionAnswers.question2 = this.dataset.answer
         appState.questionAnswers.question2Correct = isCorrect
@@ -1528,6 +1531,15 @@ function attachEventListeners() {
           }, 100)
         }
       }
+    })
+  }
+  
+  // 1단계: 2025년 예상 이유 입력
+  const predictionReason = document.getElementById('prediction-reason')
+  if (predictionReason) {
+    predictionReason.addEventListener('input', () => {
+      appState.answers.predictionReason = predictionReason.value.trim()
+      checkStage1Complete()
     })
   }
   
@@ -1806,8 +1818,9 @@ function checkStage1Complete() {
   if (btn && appState.currentStage === 1) {
     const hasLetterProblem = appState.answers.letterProblem && appState.answers.letterProblem !== '여기에 드래그하세요'
     const hasQ1 = appState.answers.question1 || appState.questionAnswers.question1
+    const hasQ1Reason = appState.answers.predictionReason && appState.answers.predictionReason.length > 0
     const hasQ2 = appState.answers.question2 || appState.questionAnswers.question2
-    btn.disabled = !(hasLetterProblem && hasQ1 && hasQ2)
+    btn.disabled = !(hasLetterProblem && hasQ1 && hasQ1Reason && hasQ2)
   }
 }
 
@@ -1828,24 +1841,15 @@ function restoreQuestionAnswers() {
     q1Options.forEach(opt => {
       if (opt.dataset.answer === appState.questionAnswers.question1) {
         opt.classList.add('selected')
-        if (opt.dataset.correct === 'true') {
-          opt.classList.add('correct-answer')
-        } else {
-          opt.classList.add('wrong-answer')
-          // 정답 표시
-          q1Options.forEach(o => {
-            if (o.dataset.correct === 'true') {
-              o.classList.add('correct-answer')
-            }
-          })
-        }
       }
     })
-    const q1Feedback = document.getElementById('q1-feedback')
-    if (q1Feedback) {
-      q1Feedback.innerHTML = appState.questionAnswers.question1Correct
-        ? '<span style="color: #4caf50;">✓ 정답입니다! 2020년 민원이 전년 대비 가장 많이 줄어들었습니다.</span>'
-        : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 2020년입니다.</span>'
+  }
+  
+  // 1단계 예상 이유 복원
+  if (appState.answers.predictionReason) {
+    const predictionReasonEl = document.getElementById('prediction-reason')
+    if (predictionReasonEl) {
+      predictionReasonEl.value = appState.answers.predictionReason
     }
   }
   
