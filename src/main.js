@@ -2638,6 +2638,31 @@ async function init() {
         checkStage2Complete()
       }
     }, 100)
+  } else if (appState.currentStage === 4) {
+    // 4단계 복원: 제안 입력 필드 복원
+    setTimeout(() => {
+      const proposalProblem = document.getElementById('proposal-problem')
+      const proposalSolution = document.getElementById('proposal-solution')
+      const proposalReason = document.getElementById('proposal-reason')
+      const combineBtn = document.getElementById('combine-btn')
+      
+      if (proposalProblem && appState.proposal.problem) {
+        proposalProblem.value = appState.proposal.problem
+      }
+      if (proposalSolution && appState.proposal.solution) {
+        proposalSolution.value = appState.proposal.solution
+      }
+      if (proposalReason && appState.proposal.reason) {
+        proposalReason.value = appState.proposal.reason
+      }
+      
+      // 모든 필드가 채워져 있으면 combine 버튼 활성화
+      if (proposalProblem && proposalSolution && proposalReason && combineBtn) {
+        combineBtn.disabled = !(proposalProblem.value.trim() && 
+                               proposalSolution.value.trim() && 
+                               proposalReason.value.trim())
+      }
+    }, 100)
   } else if (appState.currentStage === 6) {
     setTimeout(() => {
       generateSpeech()
