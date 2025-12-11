@@ -740,6 +740,7 @@ async function renderStage5() {
 function setupRealtimeUpdates() {
   if (!db) return; // Firebase가 초기화되지 않았으면 실시간 업데이트 비활성화
   
+  // 제안 실시간 업데이트
   const proposalsRef = ref(db, 'proposals')
   
   onValue(proposalsRef, (snapshot) => {
@@ -760,7 +761,30 @@ function setupRealtimeUpdates() {
       }
     }
   }, (error) => {
-    console.error('실시간 업데이트 오류:', error)
+    console.error('제안 실시간 업데이트 오류:', error)
+  })
+  
+  // 투표 상태 실시간 업데이트
+  const votingStatusRef = ref(db, 'votingStatus')
+  
+  onValue(votingStatusRef, async (snapshot) => {
+    const votingStatus = snapshot.exists() ? snapshot.val() : 'open'
+    localStorage.setItem('votingStatus', votingStatus)
+    
+    // 5단계 또는 6단계에 있으면 화면 업데이트
+    if (appState.currentStage === 5 || appState.currentStage === 6) {
+      await renderApp()
+      attachEventListeners()
+      
+      // 투표가 종료되었고 6단계에 있으면 연설문 생성
+      if (votingStatus === 'closed' && appState.currentStage === 6) {
+        setTimeout(() => {
+          generateSpeech()
+        }, 500)
+      }
+    }
+  }, (error) => {
+    console.error('투표 상태 실시간 업데이트 오류:', error)
   })
 }
 
@@ -896,6 +920,11 @@ async function renderStage6() {
       </div>
     </div>
   `
+  
+  // 실시간 업데이트 설정
+  setTimeout(() => {
+    setupRealtimeUpdates()
+  }, 100)
 }
 
 // 7단계: 개인 대시보드
