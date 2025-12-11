@@ -1021,6 +1021,7 @@ async function renderAdminStage() {
     const avgTotal = voteCount > 0 ? (total / voteCount).toFixed(1) : 0
     
     return {
+      id: proposal.id,
       name: proposal.name,
       proposal: proposal.combinedText || proposal.text,
       problem: proposal.problem,
@@ -1107,10 +1108,18 @@ async function renderAdminStage() {
             아직 제안이 없습니다.
           </p>
         ` : proposalsSummary.map((item, index) => `
-          <div style="background: var(--winter-ice); padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid var(--winter-blue-500);">
-            <h4 style="color: var(--winter-blue-700); margin-bottom: 15px;">
-              ${index + 1}. ${item.name}님의 제안
-            </h4>
+          <div style="background: var(--winter-ice); padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid var(--winter-blue-500); position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+              <h4 style="color: var(--winter-blue-700); margin: 0;">
+                ${index + 1}. ${item.name}님의 제안
+              </h4>
+              <button class="btn" id="delete-proposal-btn-${item.id}" 
+                      style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); color: white; padding: 8px 16px; font-size: 0.9em; border: none; border-radius: 6px; cursor: pointer;"
+                      data-proposal-id="${item.id}" 
+                      data-proposal-name="${item.name}">
+                🗑️ 삭제
+              </button>
+            </div>
             
             ${item.problemCause ? `
               <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid var(--winter-blue-500);">
@@ -1185,6 +1194,52 @@ async function renderAdminStage() {
       </div>
     </div>
   `
+}
+
+// 개별 제안 삭제 함수
+async function deleteProposal(proposalId, studentName) {
+  if (!confirm(`⚠️ ${studentName}님의 제안을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!`)) {
+    return
+  }
+  
+  if (!db) {
+    // Firebase가 없으면 localStorage에서 삭제
+    const allProposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
+    const filteredProposals = allProposals.filter(p => p.id !== proposalId)
+    localStorage.setItem('allProposals', JSON.stringify(filteredProposals))
+    appState.allProposals = filteredProposals
+    
+    alert(`✅ ${studentName}님의 제안이 삭제되었습니다!`)
+    
+    // 관리자 페이지 새로고침
+    appState.currentStage = 8
+    await renderApp()
+    return
+  }
+  
+  try {
+    // Firebase에서 제안 삭제
+    const proposalRef = ref(db, `proposals/${proposalId}`)
+    await set(proposalRef, null)
+    
+    // 로컬 상태도 업데이트
+    const updatedProposals = await loadProposalsFromFirebase()
+    appState.allProposals = updatedProposals
+    
+    // localStorage도 업데이트
+    const allProposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
+    const filteredProposals = allProposals.filter(p => p.id !== proposalId)
+    localStorage.setItem('allProposals', JSON.stringify(filteredProposals))
+    
+    alert(`✅ ${studentName}님의 제안이 삭제되었습니다!`)
+    
+    // 관리자 페이지 새로고침
+    appState.currentStage = 8
+    await renderApp()
+  } catch (error) {
+    console.error('제안 삭제 실패:', error)
+    alert('❌ 제안 삭제 중 오류가 발생했습니다: ' + error.message)
+  }
 }
 
 // 데이터 초기화 함수
@@ -1775,6 +1830,16 @@ function attachEventListeners() {
       renderApp()
     })
   }
+  
+  // 개별 제안 삭제 버튼들
+  const deleteProposalBtns = document.querySelectorAll('[id^="delete-proposal-btn-"]')
+  deleteProposalBtns.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const proposalId = btn.dataset.proposalId
+      const studentName = btn.dataset.proposalName
+      await deleteProposal(proposalId, studentName)
+    })
+  })
 }
 
 // 차트 렌더링
