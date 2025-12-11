@@ -5,7 +5,7 @@
 ### 1. Firebase 프로젝트 생성
 1. [Firebase Console](https://console.firebase.google.com/)에 접속
 2. 새 프로젝트 생성
-3. 프로젝트 이름: "동작구-미래시장-캠프" (원하는 이름으로 변경 가능)
+3. 프로젝트 이름: "동작구청장-후보-캠프" (원하는 이름으로 변경 가능)
 
 ### 2. Firestore Database 설정
 1. Firebase Console에서 "Firestore Database" 메뉴 선택

@@ -170,7 +170,7 @@ function renderStage0() {
     <div class="stage-container">
       <div class="stage-header">
         <h1 class="stage-title">🏛️ 최고의 동작구청장 후보는 누구?</h1>
-        <p class="stage-subtitle">동작구 미래 시장 캠프에 참여하신 여러분, 환영합니다!</p>
+        <p class="stage-subtitle">동작구청장 후보 캠프에 참여하신 여러분, 환영합니다!</p>
       </div>
       <div style="text-align: center; padding: 40px;">
         <p style="font-size: 1.2em; margin-bottom: 30px; line-height: 1.8; color: var(--winter-blue-700);">
@@ -2269,7 +2269,7 @@ async function generateSpeech() {
   }
   
   const prompt = `
-동작구 미래 시장 캠프에서 1등을 한 해결방안을 바탕으로 연설문을 작성해주세요.
+동작구청장 후보 캠프에서 1등을 한 해결방안을 바탕으로 연설문을 작성해주세요.
 
 [1등 해결방안]
 제안자: ${winner.proposal.name}
