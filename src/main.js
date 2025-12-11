@@ -422,13 +422,24 @@ function renderStage4() {
       
       <button class="btn" id="combine-btn" disabled>문장 연결하기</button>
       
-      <div id="combined-proposal" class="hidden" style="margin-top: 30px;">
+      <div id="combined-proposal" class="${appState.proposal.combinedText ? '' : 'hidden'}" style="margin-top: 30px;">
         <div class="speech-container">
           <h3 style="color: var(--winter-blue-700); margin-bottom: 15px;">연결된 공약문:</h3>
-          <div id="combined-text" style="font-size: 1.1em; line-height: 1.8; color: var(--winter-blue-900);"></div>
+          <div id="combined-text" style="font-size: 1.1em; line-height: 1.8; color: var(--winter-blue-900);">${appState.proposal.combinedText || ''}</div>
         </div>
         
-        <button class="btn" id="get-feedback-btn" style="margin-top: 20px;">AI 피드백 받기</button>
+        ${appState.proposal.combinedText ? `
+          <button class="btn" id="get-feedback-btn" style="margin-top: 20px;">AI 피드백 받기</button>
+          ${appState.aiFeedback ? `
+            <div id="ai-feedback-container" class="question-card" style="margin-top: 20px;">
+              <div class="ai-feedback">
+                <h3>🤖 AI 선생님의 피드백</h3>
+                <div class="ai-feedback-content">${appState.aiFeedback.replace(/\n/g, '<br>')}</div>
+              </div>
+            </div>
+            <button class="btn hidden" id="next-stage-btn" style="margin-top: 20px;">다음 단계로</button>
+          ` : ''}
+        ` : ''}
       </div>
       
       <div id="ai-feedback-container" class="hidden"></div>
@@ -1383,6 +1394,7 @@ function attachEventListeners() {
     nameInput.addEventListener('input', (e) => {
       appState.studentName = e.target.value.trim()
       startBtn.disabled = !appState.studentName
+      saveProgress() // 이름 입력 시에도 저장
     })
     
     startBtn.addEventListener('click', async () => {
@@ -1405,6 +1417,7 @@ function attachEventListeners() {
           if (!existingProposal && !hasVoted) {
             // 1등 결과 보기로 이동
             appState.currentStage = 6
+            saveProgress()
             await renderApp()
             setTimeout(() => {
               generateSpeech()
@@ -1416,11 +1429,13 @@ function attachEventListeners() {
           if (hasVoted) {
             // 투표 완료 → 대시보드
             appState.currentStage = 7
+            saveProgress()
             await renderApp()
             return
           } else if (existingProposal) {
             // 제안만 있음 → 1등 결과 보기
             appState.currentStage = 6
+            saveProgress()
             await renderApp()
             setTimeout(() => {
               generateSpeech()
@@ -1440,6 +1455,7 @@ function attachEventListeners() {
             console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
             // 4단계로 바로 이동
             appState.currentStage = 4
+            saveProgress()
             await renderApp()
             return
           } catch (error) {
@@ -1470,11 +1486,13 @@ function attachEventListeners() {
             if (hasVoted) {
               // 투표 완료 → 대시보드
               appState.currentStage = 7
+              saveProgress()
               await renderApp()
               return
             } else if (existingProposal) {
               // 제안 완료 → 투표
               appState.currentStage = 5
+              saveProgress()
               await renderApp()
               return
             }
@@ -1490,6 +1508,7 @@ function attachEventListeners() {
           appState.cctvData = await parseCSV('/cctv.csv')
           console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
           appState.currentStage = 1
+          saveProgress()
           renderApp()
           setTimeout(() => {
             renderCharts()
@@ -1508,6 +1527,7 @@ function attachEventListeners() {
         const password = prompt('관리자 비밀번호를 입력하세요:')
         if (password === 'teacher2024' || password === 'admin') {
           appState.currentStage = 8
+          saveProgress()
           renderApp()
         } else if (password !== null) {
           alert('비밀번호가 올바르지 않습니다.')
@@ -1536,6 +1556,7 @@ function attachEventListeners() {
       option.addEventListener('click', function() {
         const selectedOption = this.dataset.option
         appState.answers.letterProblem = selectedOption
+        saveProgress() // 진행 상태 저장
         
         letterAnswerBox.textContent = selectedOption
         letterAnswerBox.style.borderColor = 'var(--winter-blue-500)'
@@ -1575,6 +1596,7 @@ function attachEventListeners() {
       const selectedOption = e.dataTransfer.getData('text/plain')
       
       appState.answers.letterProblem = selectedOption
+      saveProgress() // 진행 상태 저장
       this.textContent = selectedOption
       this.style.borderColor = 'var(--winter-blue-500)'
       this.style.backgroundColor = 'var(--winter-blue-50)'
@@ -1655,6 +1677,7 @@ function attachEventListeners() {
         appState.questionAnswers.question1 = this.dataset.answer
         appState.questionAnswers.question1Correct = isCorrect
         appState.answers.question1 = this.dataset.answer
+        saveProgress() // 진행 상태 저장
         // 선택한 답변에 따라 시각적 피드백 표시
         if (isCorrect) {
           this.classList.add('correct-answer')
@@ -1687,6 +1710,7 @@ function attachEventListeners() {
             : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 11월입니다.</span>'
         }
         appState.answers.question2 = this.dataset.answer
+        saveProgress() // 진행 상태 저장
       }
       
       checkStage1Complete()
@@ -1700,6 +1724,7 @@ function attachEventListeners() {
     prevStageBtn.addEventListener('click', async () => {
       if (appState.currentStage > 0) {
         appState.currentStage--
+        saveProgress() // 진행 상태 저장
         await renderApp()
         
         if (appState.currentStage === 1) {
@@ -1726,6 +1751,7 @@ function attachEventListeners() {
   if (predictionReason) {
     predictionReason.addEventListener('input', () => {
       appState.answers.predictionReason = predictionReason.value.trim()
+      saveProgress() // 진행 상태 저장
       checkStage1Complete()
       // 이유 입력 시 검증 (최소 5자 이상일 때만)
       if (appState.answers.predictionReason.length >= 5 && appState.answers.question1) {
@@ -1757,6 +1783,7 @@ function attachEventListeners() {
   if (problemCause) {
     problemCause.addEventListener('input', () => {
       appState.answers.problemCause = problemCause.value.trim()
+      saveProgress() // 진행 상태 저장
       checkStage2Complete()
     })
   }
@@ -1766,6 +1793,7 @@ function attachEventListeners() {
   if (mainCause) {
     mainCause.addEventListener('change', () => {
       appState.answers.mainCause = mainCause.value
+      saveProgress() // 진행 상태 저장
       document.getElementById('next-stage-btn').disabled = !mainCause.value
     })
   }
@@ -1785,16 +1813,19 @@ function attachEventListeners() {
     
     proposalProblem.addEventListener('input', () => {
       appState.proposal.problem = proposalProblem.value.trim()
+      saveProgress() // 진행 상태 저장
       checkComplete()
     })
     
     proposalSolution.addEventListener('input', () => {
       appState.proposal.solution = proposalSolution.value.trim()
+      saveProgress() // 진행 상태 저장
       checkComplete()
     })
     
     proposalReason.addEventListener('input', () => {
       appState.proposal.reason = proposalReason.value.trim()
+      saveProgress() // 진행 상태 저장
       checkComplete()
     })
     
@@ -1836,6 +1867,7 @@ function attachEventListeners() {
       this.classList.add('selected')
       
       appState.votes[proposalIndex][criteria] = score
+      saveProgress() // 진행 상태 저장
       
       // 모든 투표가 완료되었는지 확인
       checkVotingComplete()
@@ -1856,6 +1888,7 @@ function attachEventListeners() {
     nextStageBtn.addEventListener('click', async () => {
       if (appState.currentStage < 8) {
         appState.currentStage++
+        saveProgress() // 진행 상태 저장
         await renderApp()
         
         if (appState.currentStage === 6) {
@@ -1931,6 +1964,7 @@ function attachEventListeners() {
     backToMainBtn.addEventListener('click', () => {
       appState.currentStage = 0
       appState.studentName = ''
+      saveProgress()
       renderApp()
     })
   }
@@ -1938,6 +1972,7 @@ function attachEventListeners() {
     backToMainBtn2.addEventListener('click', () => {
       appState.currentStage = 0
       appState.studentName = ''
+      saveProgress()
       renderApp()
     })
   }
@@ -2363,6 +2398,7 @@ async function submitVotes() {
     localStorage.setItem('votes', JSON.stringify(appState.votes))
     alert('투표가 완료되었습니다! (로컬 저장)')
     appState.currentStage = 6
+    saveProgress()
     await renderApp()
     setTimeout(() => {
       generateSpeech()
@@ -2388,6 +2424,7 @@ async function submitVotes() {
     
     alert('투표가 완료되었습니다!')
     appState.currentStage = 6
+    saveProgress()
     await renderApp()
     
     setTimeout(() => {
@@ -2399,6 +2436,7 @@ async function submitVotes() {
     localStorage.setItem('votes', JSON.stringify(appState.votes))
     alert('투표가 완료되었습니다! (로컬 저장)')
     appState.currentStage = 6
+    saveProgress()
     await renderApp()
     
     setTimeout(() => {
@@ -2490,10 +2528,125 @@ async function generateSpeech() {
   }
 }
 
+// 진행 상태 저장
+function saveProgress() {
+  try {
+    localStorage.setItem('currentStage', appState.currentStage.toString())
+    localStorage.setItem('studentName', appState.studentName)
+    localStorage.setItem('appStateAnswers', JSON.stringify(appState.answers))
+    localStorage.setItem('appStateProposal', JSON.stringify(appState.proposal))
+    localStorage.setItem('appStateQuestionAnswers', JSON.stringify(appState.questionAnswers))
+    localStorage.setItem('appStateVotes', JSON.stringify(appState.votes))
+  } catch (error) {
+    console.error('진행 상태 저장 실패:', error)
+  }
+}
+
+// 진행 상태 복원
+function loadProgress() {
+  try {
+    const savedStage = localStorage.getItem('currentStage')
+    const savedName = localStorage.getItem('studentName')
+    const savedAnswers = localStorage.getItem('appStateAnswers')
+    const savedProposal = localStorage.getItem('appStateProposal')
+    const savedQuestionAnswers = localStorage.getItem('appStateQuestionAnswers')
+    const savedVotes = localStorage.getItem('appStateVotes')
+    
+    if (savedStage !== null) {
+      appState.currentStage = parseInt(savedStage, 10)
+    }
+    if (savedName !== null) {
+      appState.studentName = savedName
+    }
+    if (savedAnswers !== null) {
+      try {
+        appState.answers = JSON.parse(savedAnswers)
+      } catch (e) {
+        console.error('답변 복원 실패:', e)
+      }
+    }
+    if (savedProposal !== null) {
+      try {
+        appState.proposal = JSON.parse(savedProposal)
+      } catch (e) {
+        console.error('제안 복원 실패:', e)
+      }
+    }
+    if (savedQuestionAnswers !== null) {
+      try {
+        appState.questionAnswers = JSON.parse(savedQuestionAnswers)
+      } catch (e) {
+        console.error('질문 답변 복원 실패:', e)
+      }
+    }
+    if (savedVotes !== null) {
+      try {
+        appState.votes = JSON.parse(savedVotes)
+      } catch (e) {
+        console.error('투표 복원 실패:', e)
+      }
+    }
+  } catch (error) {
+    console.error('진행 상태 복원 실패:', error)
+  }
+}
+
 // 초기화
 async function init() {
   await checkAPIKey()
+  
+  // 진행 상태 복원
+  loadProgress()
+  
+  // 복원된 단계가 0이 아니고 학생 이름이 있으면 해당 단계로 이동
+  if (appState.currentStage > 0 && appState.studentName) {
+    // CSV 데이터가 필요한 단계인 경우 로드
+    if (appState.currentStage >= 1 && appState.currentStage <= 4) {
+      try {
+        if (!appState.parkingData) {
+          appState.parkingData = await parseCSV('/illegal_parking.csv')
+        }
+        if (!appState.cctvData) {
+          appState.cctvData = await parseCSV('/cctv.csv')
+        }
+      } catch (error) {
+        console.error('CSV 데이터 로드 실패:', error)
+      }
+    }
+    
+    // 5단계 이상인 경우 제안 불러오기
+    if (appState.currentStage >= 5) {
+      try {
+        await loadProposalsFromFirebase()
+        await loadVotesFromFirebase()
+      } catch (error) {
+        console.error('Firebase 데이터 로드 실패:', error)
+      }
+    }
+  }
+  
   await renderApp()
+  
+  // 복원된 단계에 따라 추가 작업 수행
+  if (appState.currentStage === 1 || appState.currentStage === 2) {
+    setTimeout(() => {
+      renderCharts()
+      restoreQuestionAnswers()
+      if (appState.currentStage === 1) {
+        checkStage1Complete()
+      } else if (appState.currentStage === 2) {
+        checkStage2Complete()
+      }
+    }, 100)
+  } else if (appState.currentStage === 6) {
+    setTimeout(() => {
+      generateSpeech()
+    }, 500)
+  } else if (appState.currentStage === 5) {
+    setTimeout(() => {
+      setupRealtimeUpdates()
+    }, 100)
+  }
 }
 
 // 페이지 로드 시 초기화
