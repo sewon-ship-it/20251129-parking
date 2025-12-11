@@ -1501,9 +1501,15 @@ function attachEventListeners() {
             }
           })
         }
-        // 이유 검증 (이미 입력되어 있으면)
-        if (appState.answers.predictionReason) {
+        // 이유 검증 (최소 5자 이상 입력되어 있으면)
+        if (appState.answers.predictionReason && appState.answers.predictionReason.length >= 5) {
           validatePredictionReason()
+        } else {
+          // 이유가 비어있거나 짧으면 피드백 지우기
+          const feedbackEl = document.getElementById('q1-feedback')
+          if (feedbackEl) {
+            feedbackEl.innerHTML = ''
+          }
         }
       } else if (questionType === 'q2') {
         appState.questionAnswers.question2 = this.dataset.answer
@@ -1555,15 +1561,27 @@ function attachEventListeners() {
     predictionReason.addEventListener('input', () => {
       appState.answers.predictionReason = predictionReason.value.trim()
       checkStage1Complete()
-      // 이유 입력 시 검증
-      if (appState.answers.predictionReason.length > 0 && appState.answers.question1) {
+      // 이유 입력 시 검증 (최소 5자 이상일 때만)
+      if (appState.answers.predictionReason.length >= 5 && appState.answers.question1) {
         validatePredictionReason()
+      } else {
+        // 이유가 비어있거나 짧으면 피드백 지우기
+        const feedbackEl = document.getElementById('q1-feedback')
+        if (feedbackEl) {
+          feedbackEl.innerHTML = ''
+        }
       }
     })
     // 포커스가 벗어날 때도 검증
     predictionReason.addEventListener('blur', () => {
-      if (appState.answers.predictionReason.length > 0 && appState.answers.question1) {
+      if (appState.answers.predictionReason.length >= 5 && appState.answers.question1) {
         validatePredictionReason()
+      } else {
+        // 이유가 비어있거나 짧으면 피드백 지우기
+        const feedbackEl = document.getElementById('q1-feedback')
+        if (feedbackEl) {
+          feedbackEl.innerHTML = ''
+        }
       }
     })
   }
@@ -1864,7 +1882,13 @@ function validatePredictionReason() {
   const reason = appState.answers.predictionReason || ''
   const feedbackEl = document.getElementById('q1-feedback')
   
-  if (!selectedAnswer || !reason || !feedbackEl) return
+  if (!selectedAnswer || !feedbackEl) return
+  
+  // 이유가 비어있거나 너무 짧으면 피드백을 표시하지 않음
+  if (!reason || reason.trim().length < 5) {
+    feedbackEl.innerHTML = ''
+    return
+  }
   
   const reasonLower = reason.toLowerCase()
   
@@ -1888,9 +1912,8 @@ function validatePredictionReason() {
       feedbackEl.innerHTML = '<span style="color: #f44336;">✗ 틀렸습니다. 그래프를 보면 최근 몇 년간 민원이 줄어드는 추세입니다. 다시 생각해보세요.</span>'
       appState.answers.predictionReasonCorrect = false
     } else {
-      // 불명확하지만 줄어든다는 선택했으므로 일단 정답으로 처리
-      feedbackEl.innerHTML = '<span style="color: #4caf50;">✓ 정답입니다! 그래프를 보면 최근 몇 년간 민원이 줄어드는 추세입니다.</span>'
-      appState.answers.predictionReasonCorrect = true
+      // 불명확 - 키워드가 없으면 피드백 표시하지 않음
+      feedbackEl.innerHTML = ''
     }
   } else if (selectedAnswer === '늘어난다') {
     // 늘어난다는 선택했을 때 (선택 자체가 틀림)
@@ -1903,9 +1926,8 @@ function validatePredictionReason() {
       feedbackEl.innerHTML = '<span style="color: #f44336;">✗ 틀렸습니다. 그래프를 보면 최근 몇 년간 민원이 줄어드는 추세입니다. "줄어든다"를 선택하고 다시 생각해보세요.</span>'
       appState.answers.predictionReasonCorrect = false
     } else {
-      // 불명확
-      feedbackEl.innerHTML = '<span style="color: #f44336;">✗ 틀렸습니다. 그래프를 보면 최근 몇 년간 민원이 줄어드는 추세입니다. "줄어든다"를 선택하고 다시 생각해보세요.</span>'
-      appState.answers.predictionReasonCorrect = false
+      // 불명확 - 키워드가 없으면 피드백 표시하지 않음
+      feedbackEl.innerHTML = ''
     }
   }
 }
