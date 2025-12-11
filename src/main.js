@@ -554,6 +554,59 @@ async function openVoting() {
   }
 }
 
+// 삭제된 제안 목록 불러오기
+async function loadDeletedProposals() {
+  if (!db) {
+    const deleted = JSON.parse(localStorage.getItem('deletedProposals') || '[]')
+    return deleted
+  }
+  
+  try {
+    const deletedRef = ref(db, 'deletedProposals')
+    const snapshot = await get(deletedRef)
+    
+    if (snapshot.exists()) {
+      const deletedData = snapshot.val()
+      return Array.isArray(deletedData) ? deletedData : Object.values(deletedData)
+    }
+    return []
+  } catch (error) {
+    console.error('삭제된 제안 목록 불러오기 실패:', error)
+    const deleted = JSON.parse(localStorage.getItem('deletedProposals') || '[]')
+    return deleted
+  }
+}
+
+// 삭제된 제안 저장
+async function saveDeletedProposal(studentName) {
+  if (!db) {
+    const deleted = JSON.parse(localStorage.getItem('deletedProposals') || '[]')
+    if (!deleted.includes(studentName)) {
+      deleted.push(studentName)
+      localStorage.setItem('deletedProposals', JSON.stringify(deleted))
+    }
+    return
+  }
+  
+  try {
+    const deletedRef = ref(db, 'deletedProposals')
+    const currentDeleted = await loadDeletedProposals()
+    
+    if (!currentDeleted.includes(studentName)) {
+      const updatedDeleted = [...currentDeleted, studentName]
+      await set(deletedRef, updatedDeleted)
+      localStorage.setItem('deletedProposals', JSON.stringify(updatedDeleted))
+    }
+  } catch (error) {
+    console.error('삭제된 제안 저장 실패:', error)
+    const deleted = JSON.parse(localStorage.getItem('deletedProposals') || '[]')
+    if (!deleted.includes(studentName)) {
+      deleted.push(studentName)
+      localStorage.setItem('deletedProposals', JSON.stringify(deleted))
+    }
+  }
+}
+
 // 5단계: 동료 평가/투표
 async function renderStage5() {
   // Firebase에서 모든 제안 불러오기
@@ -1209,7 +1262,10 @@ async function deleteProposal(proposalId, studentName) {
     localStorage.setItem('allProposals', JSON.stringify(filteredProposals))
     appState.allProposals = filteredProposals
     
-    alert(`✅ ${studentName}님의 제안이 삭제되었습니다!`)
+    // 삭제된 제안 목록에 추가 (학생이 다시 4단계부터 시작할 수 있도록)
+    await saveDeletedProposal(studentName)
+    
+    alert(`✅ ${studentName}님의 제안이 삭제되었습니다!\n\n${studentName}님이 다시 이름을 입력하면 4단계(제안 쓰기)부터 시작할 수 있습니다.`)
     
     // 관리자 페이지 새로고침
     appState.currentStage = 8
@@ -1231,7 +1287,10 @@ async function deleteProposal(proposalId, studentName) {
     const filteredProposals = allProposals.filter(p => p.id !== proposalId)
     localStorage.setItem('allProposals', JSON.stringify(filteredProposals))
     
-    alert(`✅ ${studentName}님의 제안이 삭제되었습니다!`)
+    // 삭제된 제안 목록에 추가 (학생이 다시 4단계부터 시작할 수 있도록)
+    await saveDeletedProposal(studentName)
+    
+    alert(`✅ ${studentName}님의 제안이 삭제되었습니다!\n\n${studentName}님이 다시 이름을 입력하면 4단계(제안 쓰기)부터 시작할 수 있습니다.`)
     
     // 관리자 페이지 새로고침
     appState.currentStage = 8
@@ -1261,15 +1320,18 @@ async function clearAllData() {
     // proposals와 votes 모두 삭제
     const proposalsRef = ref(db, 'proposals')
     const votesRef = ref(db, 'votes')
+    const deletedProposalsRef = ref(db, 'deletedProposals')
     
     await set(proposalsRef, null)
     await set(votesRef, null)
+    await set(deletedProposalsRef, null)
     
     // 로컬 상태도 초기화
     appState.allProposals = []
     appState.votes = {}
     localStorage.removeItem('allProposals')
     localStorage.removeItem('votes')
+    localStorage.removeItem('deletedProposals')
     
     alert('✅ 모든 데이터가 성공적으로 삭제되었습니다!')
     
@@ -1303,8 +1365,10 @@ function attachEventListeners() {
         // 기존 진행 상태 확인
         const proposals = await loadProposalsFromFirebase()
         const votes = await loadVotesFromFirebase()
+        const deletedProposals = await loadDeletedProposals()
         const existingProposal = proposals.find(p => p.name === appState.studentName)
         const hasVoted = votes[appState.studentName] && Object.keys(votes[appState.studentName]).length > 0
+        const isDeleted = deletedProposals.includes(appState.studentName)
         
         // 투표가 종료된 경우
         if (isVotingClosed) {
@@ -1336,7 +1400,25 @@ function attachEventListeners() {
           }
         }
         
-        // 투표가 진행 중인 경우 (기존 로직)
+        // 투표가 진행 중인 경우
+        // 제안이 삭제된 경우 → 4단계부터 시작
+        if (isDeleted && !existingProposal && !hasVoted) {
+          try {
+            console.log('CSV 파일 로드 시작...')
+            appState.parkingData = await parseCSV('/illegal_parking.csv')
+            console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
+            appState.cctvData = await parseCSV('/cctv.csv')
+            console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
+            // 4단계로 바로 이동
+            appState.currentStage = 4
+            await renderApp()
+            return
+          } catch (error) {
+            console.error('데이터 로드 실패:', error)
+            alert('데이터를 불러오는데 실패했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
+          }
+        }
+        
         // 기존 진행 상태가 있는 경우
         if (existingProposal || hasVoted) {
           let message = `${appState.studentName}님, 이전에 진행한 내용이 있습니다.\n\n`
@@ -2116,6 +2198,23 @@ async function combineProposal() {
         // 새 제안 추가
         const proposalsRef = ref(db, 'proposals')
         await push(proposalsRef, myProposal)
+      }
+      
+      // 삭제 목록에서 제거 (제안을 다시 작성했으므로)
+      if (db) {
+        try {
+          const deletedProposals = await loadDeletedProposals()
+          const filteredDeleted = deletedProposals.filter(name => name !== appState.studentName)
+          const deletedRef = ref(db, 'deletedProposals')
+          await set(deletedRef, filteredDeleted)
+          localStorage.setItem('deletedProposals', JSON.stringify(filteredDeleted))
+        } catch (error) {
+          console.error('삭제 목록 업데이트 실패:', error)
+        }
+      } else {
+        const deleted = JSON.parse(localStorage.getItem('deletedProposals') || '[]')
+        const filteredDeleted = deleted.filter(name => name !== appState.studentName)
+        localStorage.setItem('deletedProposals', JSON.stringify(filteredDeleted))
       }
       
       // 로컬 상태 업데이트
