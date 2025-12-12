@@ -2786,6 +2786,33 @@ async function init() {
   // 진행 상태 복원
   loadProgress()
   
+  // 0단계(로그인 화면)에서는 진행 상태를 무시하고 항상 0단계를 보여줌
+  // URL에 stage 파라미터가 없으면 0단계로 리셋
+  const urlParams = new URLSearchParams(window.location.search)
+  const stageParam = urlParams.get('stage')
+  
+  // 모둠 정보가 없으면 0단계로 리셋 (새 사용자)
+  if (!appState.teamId || !appState.memberNumber) {
+    appState.currentStage = 0
+    appState.teamId = null
+    appState.memberNumber = null
+    appState.studentName = ''
+    appState.answers = {}
+    appState.proposal = { problem: '', solution: '', reason: '' }
+    appState.teamProposal = null
+    appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+    appState.votes = {}
+    // localStorage도 초기화
+    localStorage.removeItem('currentStage')
+    localStorage.removeItem('teamId')
+    localStorage.removeItem('memberNumber')
+    localStorage.removeItem('studentName')
+    localStorage.removeItem('appStateAnswers')
+    localStorage.removeItem('appStateProposal')
+    localStorage.removeItem('appStateQuestionAnswers')
+    localStorage.removeItem('appStateVotes')
+  }
+  
   // 복원된 단계가 0이 아니고 모둠 정보가 있으면 해당 단계로 이동
   if (appState.currentStage > 0 && appState.teamId && appState.memberNumber) {
     // CSV 데이터가 필요한 단계인 경우 로드
