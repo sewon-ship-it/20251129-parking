@@ -6,6 +6,8 @@ import { ref, set, push, get, onValue, update } from 'firebase/database'
 const appState = {
   currentStage: 0,
   studentName: '',
+  teamId: null, // 1~6
+  memberNumber: null, // 1~4
   apiKeyStatus: 'checking',
   parkingData: null,
   cctvData: null,
@@ -24,7 +26,9 @@ const appState = {
     question2: null,
     question1Correct: null,
     question2Correct: null
-  }
+  },
+  teamProposal: null, // 모둠별 제안 (4단계부터 사용)
+  realtimeListeners: [] // 실시간 리스너 정리용
 }
 
 // CSV 파싱 함수
@@ -164,7 +168,7 @@ async function renderCurrentStage() {
   }
 }
 
-// 0단계: 이름 입력 및 시작
+// 0단계: 모둠 및 번호 선택
 function renderStage0() {
   return `
     <div class="stage-container">
@@ -178,12 +182,47 @@ function renderStage0() {
           지난 시간에 고른 주차문제를 해결하는 방안을 제시하고,<br>
           투표를 통해 제일 좋은 해결방안을 골라봅시다.
         </p>
-        <div class="input-group">
-          <label class="input-label">이름을 입력해주세요</label>
-          <input type="text" id="student-name" class="input-field" placeholder="이름을 입력하세요" 
-                 value="${appState.studentName}" maxlength="20">
+        
+        <div class="question-card" style="margin-bottom: 30px; max-width: 600px; margin-left: auto; margin-right: auto;">
+          <h3 style="color: var(--winter-blue-700); margin-bottom: 20px;">모둠 및 번호 선택</h3>
+          
+          <div class="input-group" style="margin-bottom: 25px;">
+            <label class="input-label">모둠을 선택하세요 (1~6모둠)</label>
+            <select id="team-select" class="input-field" style="font-size: 1.1em; padding: 12px;">
+              <option value="">모둠 선택</option>
+              ${[1, 2, 3, 4, 5, 6].map(num => `
+                <option value="${num}" ${appState.teamId === num ? 'selected' : ''}>${num}모둠</option>
+              `).join('')}
+            </select>
+          </div>
+          
+          <div class="input-group" style="margin-bottom: 25px;">
+            <label class="input-label">모둠 내 번호를 선택하세요 (1~4번)</label>
+            <select id="member-select" class="input-field" style="font-size: 1.1em; padding: 12px;">
+              <option value="">번호 선택</option>
+              ${[1, 2, 3, 4].map(num => `
+                <option value="${num}" ${appState.memberNumber === num ? 'selected' : ''}>${num}번</option>
+              `).join('')}
+            </select>
+          </div>
+          
+          <div class="input-group" style="margin-bottom: 25px;">
+            <label class="input-label">이름 (선택사항)</label>
+            <input type="text" id="student-name" class="input-field" placeholder="이름을 입력하세요 (선택사항)" 
+                   value="${appState.studentName}" maxlength="20">
+          </div>
+          
+          <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 15px; border-radius: 10px; margin-top: 20px; border-left: 4px solid var(--winter-blue-500);">
+            <p style="color: var(--winter-blue-700); font-size: 0.95em; line-height: 1.6; margin: 0;">
+              💡 <strong>안내:</strong><br>
+              • 1~3단계는 각자 문제를 풀어요<br>
+              • 4단계부터는 모둠 친구들과 함께 협업해요<br>
+              • 모둠에 3명만 있어도 진행 가능해요
+            </p>
+          </div>
         </div>
-        <button class="btn btn-success" id="start-btn" ${appState.studentName ? '' : 'disabled'}>
+        
+        <button class="btn btn-success" id="start-btn" ${(appState.teamId && appState.memberNumber) ? '' : 'disabled'}>
           시작하기 🚀
         </button>
         <div style="margin-top: 30px; padding-top: 20px; border-top: 2px dashed var(--winter-blue-300);">
@@ -378,13 +417,30 @@ function renderStage3() {
   `
 }
 
-// 4단계: 공약 쓰기
+// 4단계: 공약 쓰기 (모둠별 실시간 협업)
 function renderStage4() {
+  const teamKey = appState.teamId ? `team${appState.teamId}` : 'team1'
+  const teamProposal = appState.teamProposal || {
+    problem: '',
+    solution: '',
+    reason: '',
+    combinedText: '',
+    aiFeedback: ''
+  }
+  
   return `
     <div class="stage-container">
       <div class="stage-header">
         <h1 class="stage-title">✍️ 4단계: 공약 쓰기!</h1>
-        <p class="stage-subtitle">해결방안을 제시하고 공약을 작성해봅시다</p>
+        <p class="stage-subtitle">${appState.teamId}모둠 친구들과 함께 해결방안을 제시하고 공약을 작성해봅시다</p>
+      </div>
+      
+      <div class="question-card" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-left: 5px solid #4caf50; margin-bottom: 30px;">
+        <h3 style="color: #2e7d32; margin-bottom: 10px;">👥 모둠 협업 모드</h3>
+        <p style="color: #1b5e20; line-height: 1.8;">
+          이 화면은 ${appState.teamId}모둠 친구들과 실시간으로 공유됩니다.<br>
+          친구들이 입력하는 내용이 자동으로 저장되고 보입니다! 💬
+        </p>
       </div>
       
       <div class="question-card" style="margin-bottom: 30px;">
@@ -402,39 +458,42 @@ function renderStage4() {
           <label class="input-label">문제 상황은 무엇인가요? (한 문장)</label>
           <input type="text" id="proposal-problem" class="input-field" 
                  placeholder="예: 학교 앞 학부모들이 불법 주정차하면서 민원이 발생하고 있습니다"
-                 value="${appState.proposal.problem}">
+                 value="${teamProposal.problem}">
+          <div id="problem-status" style="font-size: 0.85em; color: var(--winter-blue-600); margin-top: 5px;"></div>
         </div>
         
         <div class="input-group">
           <label class="input-label">어떤 해결방안을 제안하나요? (한 문장)</label>
           <input type="text" id="proposal-solution" class="input-field" 
                  placeholder="예: 공공 기관의 주차장을 주민들에게 개방하기"
-                 value="${appState.proposal.solution}">
+                 value="${teamProposal.solution}">
+          <div id="solution-status" style="font-size: 0.85em; color: var(--winter-blue-600); margin-top: 5px;"></div>
         </div>
         
         <div class="input-group">
           <label class="input-label">왜 그렇게 생각하나요? (두세 문장)</label>
           <textarea id="proposal-reason" class="input-field" 
                     placeholder="예: 주차 공간이 부족한 시간대는 주로 오후 6시 이후입니다. 오후 6시 이후에 공공 기관의 주차장을 개방하면 주차 문제를 해결할 수 있을 것입니다."
-                    style="min-height: 120px;">${appState.proposal.reason}</textarea>
+                    style="min-height: 120px;">${teamProposal.reason}</textarea>
+          <div id="reason-status" style="font-size: 0.85em; color: var(--winter-blue-600); margin-top: 5px;"></div>
         </div>
       </div>
       
       <button class="btn" id="combine-btn" disabled>문장 연결하기</button>
       
-      <div id="combined-proposal" class="${appState.proposal.combinedText ? '' : 'hidden'}" style="margin-top: 30px;">
+      <div id="combined-proposal" class="${teamProposal.combinedText ? '' : 'hidden'}" style="margin-top: 30px;">
         <div class="speech-container">
           <h3 style="color: var(--winter-blue-700); margin-bottom: 15px;">연결된 공약문:</h3>
-          <div id="combined-text" style="font-size: 1.1em; line-height: 1.8; color: var(--winter-blue-900);">${appState.proposal.combinedText || ''}</div>
+          <div id="combined-text" style="font-size: 1.1em; line-height: 1.8; color: var(--winter-blue-900);">${teamProposal.combinedText || ''}</div>
         </div>
         
-        ${appState.proposal.combinedText ? `
+        ${teamProposal.combinedText ? `
           <button class="btn" id="get-feedback-btn" style="margin-top: 20px;">AI 피드백 받기</button>
-          ${appState.aiFeedback ? `
+          ${teamProposal.aiFeedback ? `
             <div id="ai-feedback-container" class="question-card" style="margin-top: 20px;">
               <div class="ai-feedback">
                 <h3>🤖 AI 선생님의 피드백</h3>
-                <div class="ai-feedback-content">${appState.aiFeedback.replace(/\n/g, '<br>')}</div>
+                <div class="ai-feedback-content">${teamProposal.aiFeedback.replace(/\n/g, '<br>')}</div>
               </div>
             </div>
             <button class="btn hidden" id="next-stage-btn" style="margin-top: 20px;">다음 단계로</button>
@@ -670,7 +729,7 @@ async function renderStage5() {
         ${proposals.map((proposal, index) => `
           <div class="question-card" style="margin-bottom: 30px;">
             <h3 style="color: var(--winter-blue-700); margin-bottom: 15px;">
-              제안 ${index + 1}: ${proposal.name}님의 해결방안
+              제안 ${index + 1}: ${proposal.name}의 해결방안
             </h3>
             <div style="background: var(--winter-ice); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
               <p style="line-height: 1.8; font-size: 1.05em;">${proposal.combinedText || proposal.text}</p>
@@ -688,7 +747,7 @@ async function renderStage5() {
               </thead>
               <tbody>
                 <tr>
-                  <td><strong>${proposal.name}</strong></td>
+                  <td><strong>${proposal.name}</strong>${proposal.teamId ? ` (${proposal.teamId}모둠)` : ''}</td>
                   <td>
                     ${[1, 2, 3, 4, 5].map(score => `
                       <button class="rating-btn" data-proposal="${index}" 
@@ -747,14 +806,124 @@ async function renderStage5() {
   }, 100)
 }
 
-// 실시간 업데이트 설정
+// 실시간 리스너 정리
+function cleanupRealtimeListeners() {
+  appState.realtimeListeners.forEach(unsubscribe => {
+    if (typeof unsubscribe === 'function') {
+      unsubscribe()
+    }
+  })
+  appState.realtimeListeners = []
+}
+
+// 모둠별 제안 실시간 동기화 (4단계)
+function setupTeamProposalRealtimeSync() {
+  if (!db || !appState.teamId) return
+  
+  cleanupRealtimeListeners()
+  
+  const teamKey = `team${appState.teamId}`
+  const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+  
+  // 실시간 동기화
+  const unsubscribe = onValue(teamProposalRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const teamProposal = snapshot.val()
+      appState.teamProposal = teamProposal
+      
+      // 4단계에 있으면 화면 업데이트
+      if (appState.currentStage === 4) {
+        updateTeamProposalUI(teamProposal)
+      }
+    } else {
+      // 초기화
+      appState.teamProposal = {
+        problem: '',
+        solution: '',
+        reason: '',
+        combinedText: '',
+        aiFeedback: ''
+      }
+      if (appState.currentStage === 4) {
+        updateTeamProposalUI(appState.teamProposal)
+      }
+    }
+  }, (error) => {
+    console.error('모둠 제안 실시간 동기화 오류:', error)
+  })
+  
+  appState.realtimeListeners.push(unsubscribe)
+}
+
+// 모둠 제안 UI 업데이트 (다른 멤버의 입력 반영)
+function updateTeamProposalUI(teamProposal) {
+  const problemInput = document.getElementById('proposal-problem')
+  const solutionInput = document.getElementById('proposal-solution')
+  const reasonInput = document.getElementById('proposal-reason')
+  const combinedText = document.getElementById('combined-text')
+  
+  if (problemInput && problemInput.value !== teamProposal.problem) {
+    problemInput.value = teamProposal.problem || ''
+  }
+  if (solutionInput && solutionInput.value !== teamProposal.solution) {
+    solutionInput.value = teamProposal.solution || ''
+  }
+  if (reasonInput && reasonInput.value !== teamProposal.reason) {
+    reasonInput.value = teamProposal.reason || ''
+  }
+  if (combinedText && teamProposal.combinedText) {
+    combinedText.textContent = teamProposal.combinedText
+    document.getElementById('combined-proposal')?.classList.remove('hidden')
+  }
+  
+  // combine 버튼 상태 업데이트
+  const combineBtn = document.getElementById('combine-btn')
+  if (combineBtn) {
+    combineBtn.disabled = !(teamProposal.problem && teamProposal.solution && teamProposal.reason)
+  }
+}
+
+// 모둠 제안 저장 (디바운싱 적용)
+let saveTimeout = null
+async function saveTeamProposal(field, value) {
+  if (!db || !appState.teamId) return
+  
+  const teamKey = `team${appState.teamId}`
+  const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+  
+  // 현재 상태 가져오기
+  const currentProposal = appState.teamProposal || {
+    problem: '',
+    solution: '',
+    reason: '',
+    combinedText: '',
+    aiFeedback: ''
+  }
+  
+  // 업데이트
+  currentProposal[field] = value
+  appState.teamProposal = currentProposal
+  
+  // 디바운싱 (500ms 후 저장)
+  clearTimeout(saveTimeout)
+  saveTimeout = setTimeout(async () => {
+    try {
+      await update(teamProposalRef, { [field]: value })
+    } catch (error) {
+      console.error('모둠 제안 저장 실패:', error)
+    }
+  }, 500)
+}
+
+// 실시간 업데이트 설정 (5단계용)
 function setupRealtimeUpdates() {
-  if (!db) return; // Firebase가 초기화되지 않았으면 실시간 업데이트 비활성화
+  if (!db) return
+  
+  cleanupRealtimeListeners()
   
   // 제안 실시간 업데이트
   const proposalsRef = ref(db, 'proposals')
-  
-  onValue(proposalsRef, (snapshot) => {
+  const unsubscribe1 = onValue(proposalsRef, (snapshot) => {
     if (snapshot.exists()) {
       const proposalsData = snapshot.val()
       const proposals = Object.keys(proposalsData).map(key => ({
@@ -762,7 +931,6 @@ function setupRealtimeUpdates() {
         ...proposalsData[key]
       }))
       
-      // 제안이 변경되었고 현재 5단계에 있으면 화면 업데이트
       if (appState.currentStage === 5) {
         appState.allProposals = proposals
         renderApp()
@@ -775,19 +943,18 @@ function setupRealtimeUpdates() {
     console.error('제안 실시간 업데이트 오류:', error)
   })
   
+  appState.realtimeListeners.push(unsubscribe1)
+  
   // 투표 상태 실시간 업데이트
   const votingStatusRef = ref(db, 'votingStatus')
-  
-  onValue(votingStatusRef, async (snapshot) => {
+  const unsubscribe2 = onValue(votingStatusRef, async (snapshot) => {
     const votingStatus = snapshot.exists() ? snapshot.val() : 'open'
     localStorage.setItem('votingStatus', votingStatus)
     
-    // 5단계 또는 6단계에 있으면 화면 업데이트
     if (appState.currentStage === 5 || appState.currentStage === 6) {
       await renderApp()
       attachEventListeners()
       
-      // 투표가 종료되었고 6단계에 있으면 연설문 생성
       if (votingStatus === 'closed' && appState.currentStage === 6) {
         setTimeout(() => {
           generateSpeech()
@@ -797,6 +964,8 @@ function setupRealtimeUpdates() {
   }, (error) => {
     console.error('투표 상태 실시간 업데이트 오류:', error)
   })
+  
+  appState.realtimeListeners.push(unsubscribe2)
 }
 
 // 6단계: 1등 해결방안 연설문
@@ -938,7 +1107,7 @@ async function renderStage6() {
   }, 100)
 }
 
-// 7단계: 개인 대시보드
+// 7단계: 모둠별 대시보드
 async function renderStage7() {
   const proposals = appState.allProposals.length > 0 
     ? appState.allProposals 
@@ -946,14 +1115,15 @@ async function renderStage7() {
   
   const votes = await loadVotesFromFirebase()
   
-  const myProposalIndex = proposals.findIndex(p => p.name === appState.studentName)
+  const teamName = `${appState.teamId}모둠`
+  const myProposalIndex = proposals.findIndex(p => p.teamId === appState.teamId || p.name === teamName)
   const myProposal = myProposalIndex >= 0 ? proposals[myProposalIndex] : null
   
   if (!myProposal) {
     return `
       <div class="stage-container">
         <div class="stage-header">
-          <h1 class="stage-title">📊 7단계: 개인 대시보드</h1>
+          <h1 class="stage-title">📊 7단계: ${teamName} 대시보드</h1>
         </div>
         <p style="text-align: center; padding: 40px;">제안 정보를 찾을 수 없습니다.</p>
       </div>
@@ -968,10 +1138,11 @@ async function renderStage7() {
   let totalHarmless = 0
   let voteCount = 0
   
-  Object.keys(votes).forEach(studentName => {
-    const studentVote = votes[studentName]
-    if (studentVote && studentVote[myProposalIndex]) {
-      const vote = studentVote[myProposalIndex]
+  // 모둠별 투표 데이터 찾기
+  Object.keys(votes).forEach(voterName => {
+    const voterVote = votes[voterName]
+    if (voterVote && voterVote[myProposalIndex]) {
+      const vote = voterVote[myProposalIndex]
       totalEffect += vote.effect || 0
       totalCost += vote.cost || 0
       totalPractical += vote.practical || 0
@@ -1007,12 +1178,12 @@ async function renderStage7() {
   return `
     <div class="stage-container">
       <div class="stage-header">
-        <h1 class="stage-title">📊 7단계: ${appState.studentName}님의 대시보드</h1>
-        <p class="stage-subtitle">당신의 해결방안 평가 결과입니다</p>
+        <h1 class="stage-title">📊 7단계: ${teamName} 대시보드</h1>
+        <p class="stage-subtitle">${teamName}의 해결방안 평가 결과입니다</p>
       </div>
       
       <div class="speech-container" style="margin-bottom: 30px;">
-        <h3 style="color: var(--winter-blue-700); margin-bottom: 15px;">당신의 해결방안:</h3>
+        <h3 style="color: var(--winter-blue-700); margin-bottom: 15px;">${teamName}의 해결방안:</h3>
         <p style="line-height: 1.8; font-size: 1.05em;">${myProposal.combinedText || myProposal.text}</p>
       </div>
       
@@ -1386,121 +1557,59 @@ async function clearAllData() {
 
 // 이벤트 리스너 연결
 function attachEventListeners() {
-  // 0단계: 이름 입력
+  // 0단계: 모둠 및 번호 선택
+  const teamSelect = document.getElementById('team-select')
+  const memberSelect = document.getElementById('member-select')
   const nameInput = document.getElementById('student-name')
   const startBtn = document.getElementById('start-btn')
   
-  if (nameInput && startBtn) {
-    nameInput.addEventListener('input', (e) => {
-      appState.studentName = e.target.value.trim()
-      startBtn.disabled = !appState.studentName
-      saveProgress() // 이름 입력 시에도 저장
+  if (teamSelect && memberSelect && startBtn) {
+    teamSelect.addEventListener('change', (e) => {
+      appState.teamId = e.target.value ? parseInt(e.target.value) : null
+      updateStartButton()
+      saveProgress()
     })
     
+    memberSelect.addEventListener('change', (e) => {
+      appState.memberNumber = e.target.value ? parseInt(e.target.value) : null
+      updateStartButton()
+      saveProgress()
+    })
+    
+    if (nameInput) {
+      nameInput.addEventListener('input', (e) => {
+        appState.studentName = e.target.value.trim()
+        saveProgress()
+      })
+    }
+    
+    function updateStartButton() {
+      if (startBtn) {
+        startBtn.disabled = !(appState.teamId && appState.memberNumber)
+      }
+    }
+    
     startBtn.addEventListener('click', async () => {
-      if (appState.studentName) {
-        // 투표 상태 확인
-        const votingStatus = await getVotingStatus()
-        const isVotingClosed = votingStatus === 'closed'
+      if (appState.teamId && appState.memberNumber) {
+        // 모둠 정보 저장
+        const teamKey = `team${appState.teamId}`
+        const memberKey = `${teamKey}-member${appState.memberNumber}`
         
-        // 기존 진행 상태 확인
-        const proposals = await loadProposalsFromFirebase()
-        const votes = await loadVotesFromFirebase()
-        const deletedProposals = await loadDeletedProposals()
-        const existingProposal = proposals.find(p => p.name === appState.studentName)
-        const hasVoted = votes[appState.studentName] && Object.keys(votes[appState.studentName]).length > 0
-        const isDeleted = deletedProposals.includes(appState.studentName)
-        
-        // 투표가 종료된 경우
-        if (isVotingClosed) {
-          // 새로운 학생 (기존 제안/투표 없음) → 바로 결과 확인
-          if (!existingProposal && !hasVoted) {
-            // 1등 결과 보기로 이동
-            appState.currentStage = 6
-            saveProgress()
-            await renderApp()
-            setTimeout(() => {
-              generateSpeech()
-            }, 500)
-            return
-          }
-          
-          // 기존 학생 → 대시보드 또는 결과 확인
-          if (hasVoted) {
-            // 투표 완료 → 대시보드
-            appState.currentStage = 7
-            saveProgress()
-            await renderApp()
-            return
-          } else if (existingProposal) {
-            // 제안만 있음 → 1등 결과 보기
-            appState.currentStage = 6
-            saveProgress()
-            await renderApp()
-            setTimeout(() => {
-              generateSpeech()
-            }, 500)
-            return
-          }
-        }
-        
-        // 투표가 진행 중인 경우
-        // 제안이 삭제된 경우 → 4단계부터 시작
-        if (isDeleted && !existingProposal && !hasVoted) {
+        // Firebase에 모둠 멤버 정보 저장 (선택사항)
+        if (db && appState.studentName) {
           try {
-            console.log('CSV 파일 로드 시작...')
-            appState.parkingData = await parseCSV('/illegal_parking.csv')
-            console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
-            appState.cctvData = await parseCSV('/cctv.csv')
-            console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
-            // 4단계로 바로 이동
-            appState.currentStage = 4
-            saveProgress()
-            await renderApp()
-            return
+            const memberRef = ref(db, `teams/${teamKey}/members/${memberKey}`)
+            await set(memberRef, {
+              name: appState.studentName || `멤버${appState.memberNumber}`,
+              memberNumber: appState.memberNumber,
+              joinedAt: new Date().toISOString()
+            })
           } catch (error) {
-            console.error('데이터 로드 실패:', error)
-            alert('데이터를 불러오는데 실패했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
+            console.error('멤버 정보 저장 실패:', error)
           }
         }
         
-        // 기존 진행 상태가 있는 경우
-        if (existingProposal || hasVoted) {
-          let message = `${appState.studentName}님, 이전에 진행한 내용이 있습니다.\n\n`
-          let options = []
-          
-          if (hasVoted) {
-            message += '✅ 투표 완료\n'
-            options.push('대시보드 보기 (7단계)')
-          } else if (existingProposal) {
-            message += '✅ 제안 완료 (투표 미완료)\n'
-            options.push('투표하기 (5단계)')
-          }
-          
-          message += '\n어디서부터 시작하시겠습니까?'
-          
-          const choice = confirm(message + '\n\n확인 = ' + (options[0] || '대시보드') + '\n취소 = 처음부터 시작')
-          
-          if (choice) {
-            // 기존 진행 상태로 이동
-            if (hasVoted) {
-              // 투표 완료 → 대시보드
-              appState.currentStage = 7
-              saveProgress()
-              await renderApp()
-              return
-            } else if (existingProposal) {
-              // 제안 완료 → 투표
-              appState.currentStage = 5
-              saveProgress()
-              await renderApp()
-              return
-            }
-          }
-          // 취소하면 처음부터 시작 (아래 코드 계속 실행)
-        }
-        
-        // 처음부터 시작하거나 기존 진행 상태가 없는 경우
+        // 처음부터 시작
         try {
           console.log('CSV 파일 로드 시작...')
           appState.parkingData = await parseCSV('/illegal_parking.csv')
@@ -1798,40 +1907,88 @@ function attachEventListeners() {
     })
   }
   
-  // 4단계: 공약 작성
+  // 4단계: 공약 작성 (모둠별 실시간 협업)
   const proposalProblem = document.getElementById('proposal-problem')
   const proposalSolution = document.getElementById('proposal-solution')
   const proposalReason = document.getElementById('proposal-reason')
   const combineBtn = document.getElementById('combine-btn')
   
   if (proposalProblem && proposalSolution && proposalReason && combineBtn) {
-    const checkComplete = () => {
-      combineBtn.disabled = !(proposalProblem.value.trim() && 
-                             proposalSolution.value.trim() && 
-                             proposalReason.value.trim())
+    // 실시간 동기화 설정
+    if (appState.currentStage === 4) {
+      setupTeamProposalRealtimeSync()
     }
     
+    const checkComplete = () => {
+      const teamProposal = appState.teamProposal || {
+        problem: '',
+        solution: '',
+        reason: ''
+      }
+      combineBtn.disabled = !(teamProposal.problem && 
+                               teamProposal.solution && 
+                               teamProposal.reason)
+    }
+    
+    // 실시간 저장 (디바운싱 적용)
     proposalProblem.addEventListener('input', () => {
-      appState.proposal.problem = proposalProblem.value.trim()
-      saveProgress() // 진행 상태 저장
+      const value = proposalProblem.value.trim()
+      saveTeamProposal('problem', value)
       checkComplete()
+      
+      // 상태 표시
+      const statusEl = document.getElementById('problem-status')
+      if (statusEl) {
+        statusEl.textContent = '💾 저장 중...'
+        setTimeout(() => {
+          statusEl.textContent = '✅ 저장됨'
+          setTimeout(() => {
+            statusEl.textContent = ''
+          }, 1000)
+        }, 600)
+      }
     })
     
     proposalSolution.addEventListener('input', () => {
-      appState.proposal.solution = proposalSolution.value.trim()
-      saveProgress() // 진행 상태 저장
+      const value = proposalSolution.value.trim()
+      saveTeamProposal('solution', value)
       checkComplete()
+      
+      const statusEl = document.getElementById('solution-status')
+      if (statusEl) {
+        statusEl.textContent = '💾 저장 중...'
+        setTimeout(() => {
+          statusEl.textContent = '✅ 저장됨'
+          setTimeout(() => {
+            statusEl.textContent = ''
+          }, 1000)
+        }, 600)
+      }
     })
     
     proposalReason.addEventListener('input', () => {
-      appState.proposal.reason = proposalReason.value.trim()
-      saveProgress() // 진행 상태 저장
+      const value = proposalReason.value.trim()
+      saveTeamProposal('reason', value)
       checkComplete()
+      
+      const statusEl = document.getElementById('reason-status')
+      if (statusEl) {
+        statusEl.textContent = '💾 저장 중...'
+        setTimeout(() => {
+          statusEl.textContent = '✅ 저장됨'
+          setTimeout(() => {
+            statusEl.textContent = ''
+          }, 1000)
+        }, 600)
+      }
     })
     
     combineBtn.addEventListener('click', async () => {
-      await combineProposal()
+      await combineTeamProposal()
     })
+    
+    // 초기 상태 확인
+    checkComplete()
   }
   
   // AI 피드백 받기
@@ -2205,11 +2362,17 @@ function restoreQuestionAnswers() {
   }
 }
 
-// 공약문 연결
-async function combineProposal() {
-  const problem = appState.proposal.problem
-  const solution = appState.proposal.solution
-  const reason = appState.proposal.reason
+// 모둠별 공약문 연결
+async function combineTeamProposal() {
+  const teamProposal = appState.teamProposal || {
+    problem: '',
+    solution: '',
+    reason: ''
+  }
+  
+  const problem = teamProposal.problem
+  const solution = teamProposal.solution
+  const reason = teamProposal.reason
   
   if (!problem || !solution || !reason) return
   
@@ -2233,77 +2396,74 @@ async function combineProposal() {
     
     document.getElementById('combined-text').textContent = combinedText
     document.getElementById('combined-proposal').classList.remove('hidden')
-    appState.proposal.combinedText = combinedText
     
-    // Firebase에 제안 저장
+    // 모둠 제안에 저장
+    if (!appState.teamProposal) {
+      appState.teamProposal = {}
+    }
+    appState.teamProposal.combinedText = combinedText
+    
+    // Firebase에 모둠 제안 업데이트
+    if (db && appState.teamId) {
+      const teamKey = `team${appState.teamId}`
+      const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+      await update(teamProposalRef, { combinedText })
+    }
+    
+    // 전체 제안 목록에도 저장 (5단계 투표용)
+    const teamName = `${appState.teamId}모둠`
     const myProposal = {
-      name: appState.studentName,
+      name: teamName,
       problem: problem,
       solution: solution,
       reason: reason,
       combinedText: combinedText,
       text: combinedText,
-      // 2단계 데이터 추가
-      problemCause: appState.answers.problemCause || '',
-      mainCause: appState.answers.mainCause || '',
+      teamId: appState.teamId,
       timestamp: new Date().toISOString()
     }
     
     try {
-      // 기존 제안 확인
-      const proposals = await loadProposalsFromFirebase()
-      const existingProposal = proposals.find(p => p.name === appState.studentName)
-      
-      if (existingProposal) {
-        // 기존 제안 업데이트
-        const proposalRef = ref(db, `proposals/${existingProposal.id}`)
-        await update(proposalRef, myProposal)
-      } else {
-        // 새 제안 추가
-        const proposalsRef = ref(db, 'proposals')
-        await push(proposalsRef, myProposal)
-      }
-      
-      // 삭제 목록에서 제거 (제안을 다시 작성했으므로)
       if (db) {
-        try {
-          const deletedProposals = await loadDeletedProposals()
-          const filteredDeleted = deletedProposals.filter(name => name !== appState.studentName)
-          const deletedRef = ref(db, 'deletedProposals')
-          await set(deletedRef, filteredDeleted)
-          localStorage.setItem('deletedProposals', JSON.stringify(filteredDeleted))
-        } catch (error) {
-          console.error('삭제 목록 업데이트 실패:', error)
+        // 기존 제안 확인 (모둠별)
+        const proposals = await loadProposalsFromFirebase()
+        const existingProposal = proposals.find(p => p.teamId === appState.teamId)
+        
+        if (existingProposal) {
+          // 기존 제안 업데이트
+          const proposalRef = ref(db, `proposals/${existingProposal.id}`)
+          await update(proposalRef, myProposal)
+        } else {
+          // 새 제안 추가
+          const proposalsRef = ref(db, 'proposals')
+          await push(proposalsRef, myProposal)
         }
+        
+        // 로컬 상태 업데이트
+        const updatedProposals = await loadProposalsFromFirebase()
+        appState.allProposals = updatedProposals
       } else {
-        const deleted = JSON.parse(localStorage.getItem('deletedProposals') || '[]')
-        const filteredDeleted = deleted.filter(name => name !== appState.studentName)
-        localStorage.setItem('deletedProposals', JSON.stringify(filteredDeleted))
+        // localStorage에 저장
+        const allProposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
+        const existingIndex = allProposals.findIndex(p => p.teamId === appState.teamId)
+        if (existingIndex >= 0) {
+          allProposals[existingIndex] = myProposal
+        } else {
+          allProposals.push(myProposal)
+        }
+        localStorage.setItem('allProposals', JSON.stringify(allProposals))
+        appState.allProposals = allProposals
       }
-      
-      // 로컬 상태 업데이트
-      const updatedProposals = await loadProposalsFromFirebase()
-      appState.allProposals = updatedProposals
     } catch (error) {
       console.error('제안 저장 실패:', error)
-      // Firebase 실패 시 localStorage에 저장
-      const allProposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
-      const existingIndex = allProposals.findIndex(p => p.name === appState.studentName)
-      if (existingIndex >= 0) {
-        allProposals[existingIndex] = myProposal
-      } else {
-        allProposals.push(myProposal)
-      }
-      localStorage.setItem('allProposals', JSON.stringify(allProposals))
-      appState.allProposals = allProposals
-      alert('Firebase 저장에 실패했습니다. 로컬에 저장되었습니다.')
+      alert('Firebase 저장에 실패했습니다.')
     }
   } catch (error) {
     alert('문장 연결 중 오류가 발생했습니다: ' + error.message)
   }
 }
 
-// AI 피드백 받기
+// AI 피드백 받기 (모둠별)
 async function getAIFeedback() {
   const feedbackContainer = document.getElementById('ai-feedback-container')
   const feedbackBtn = document.getElementById('get-feedback-btn')
@@ -2314,18 +2474,22 @@ async function getAIFeedback() {
     feedbackBtn.disabled = true
   }
   
-  const proposal = appState.proposal
+  const teamProposal = appState.teamProposal || {
+    problem: '',
+    solution: '',
+    reason: ''
+  }
   
   const systemPrompt = `당신은 초등학교 4학년 학생들에게 사회 교과서 내용을 바탕으로 해결방안에 대해 피드백을 주는 친절한 선생님입니다. 
 항상 격려하고, 구체적이고 이해하기 쉬운 말로 설명합니다.`
 
   const prompt = `
-초등학교 4학년 학생이 작성한 해결방안에 대해 피드백을 주세요.
+초등학교 4학년 학생들이 모둠으로 작성한 해결방안에 대해 피드백을 주세요.
 
-[학생의 제안]
-문제 상황: ${proposal.problem}
-해결방안: ${proposal.solution}
-이유: ${proposal.reason}
+[학생들의 제안]
+문제 상황: ${teamProposal.problem}
+해결방안: ${teamProposal.solution}
+이유: ${teamProposal.reason}
 
 [교과서에서 배운 주요 해결방안 예시]
 1. 주차 공간을 효율적으로 활용하기 (예: 시간대별 주차장 개방)
@@ -2351,7 +2515,19 @@ async function getAIFeedback() {
           <div class="ai-feedback-content">${feedback.replace(/\n/g, '<br>')}</div>
         </div>
       `
-      appState.aiFeedback = feedback
+      
+      // 모둠 제안에 피드백 저장
+      if (!appState.teamProposal) {
+        appState.teamProposal = {}
+      }
+      appState.teamProposal.aiFeedback = feedback
+      
+      // Firebase에 저장
+      if (db && appState.teamId) {
+        const teamKey = `team${appState.teamId}`
+        const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+        await update(teamProposalRef, { aiFeedback: feedback })
+      }
     }
     
     document.getElementById('next-stage-btn').classList.remove('hidden')
@@ -2384,7 +2560,7 @@ function checkVotingComplete() {
   submitBtn.disabled = !allComplete
 }
 
-// 투표 제출
+// 투표 제출 (모둠별)
 async function submitVotes() {
   // 투표 종료 상태 확인
   const votingStatus = await getVotingStatus()
@@ -2407,14 +2583,16 @@ async function submitVotes() {
   }
   
   try {
-    // Firebase에 투표 저장 (전체 투표 데이터에 현재 학생의 투표 추가)
+    // Firebase에 투표 저장 (모둠별)
+    const teamKey = appState.teamId ? `team${appState.teamId}` : 'team1'
     const allVotesRef = ref(db, 'votes/all')
     const currentVotes = await loadVotesFromFirebase()
     
-    // 현재 학생의 투표를 전체 투표에 추가
+    // 모둠명으로 투표 저장
+    const teamName = `${appState.teamId}모둠`
     const updatedVotes = {
       ...currentVotes,
-      [appState.studentName]: appState.votes
+      [teamName]: appState.votes
     }
     
     await set(allVotesRef, updatedVotes)
@@ -2533,6 +2711,8 @@ function saveProgress() {
   try {
     localStorage.setItem('currentStage', appState.currentStage.toString())
     localStorage.setItem('studentName', appState.studentName)
+    localStorage.setItem('teamId', appState.teamId ? appState.teamId.toString() : '')
+    localStorage.setItem('memberNumber', appState.memberNumber ? appState.memberNumber.toString() : '')
     localStorage.setItem('appStateAnswers', JSON.stringify(appState.answers))
     localStorage.setItem('appStateProposal', JSON.stringify(appState.proposal))
     localStorage.setItem('appStateQuestionAnswers', JSON.stringify(appState.questionAnswers))
@@ -2547,6 +2727,8 @@ function loadProgress() {
   try {
     const savedStage = localStorage.getItem('currentStage')
     const savedName = localStorage.getItem('studentName')
+    const savedTeamId = localStorage.getItem('teamId')
+    const savedMemberNumber = localStorage.getItem('memberNumber')
     const savedAnswers = localStorage.getItem('appStateAnswers')
     const savedProposal = localStorage.getItem('appStateProposal')
     const savedQuestionAnswers = localStorage.getItem('appStateQuestionAnswers')
@@ -2557,6 +2739,12 @@ function loadProgress() {
     }
     if (savedName !== null) {
       appState.studentName = savedName
+    }
+    if (savedTeamId !== null && savedTeamId !== '') {
+      appState.teamId = parseInt(savedTeamId, 10)
+    }
+    if (savedMemberNumber !== null && savedMemberNumber !== '') {
+      appState.memberNumber = parseInt(savedMemberNumber, 10)
     }
     if (savedAnswers !== null) {
       try {
@@ -2598,8 +2786,8 @@ async function init() {
   // 진행 상태 복원
   loadProgress()
   
-  // 복원된 단계가 0이 아니고 학생 이름이 있으면 해당 단계로 이동
-  if (appState.currentStage > 0 && appState.studentName) {
+  // 복원된 단계가 0이 아니고 모둠 정보가 있으면 해당 단계로 이동
+  if (appState.currentStage > 0 && appState.teamId && appState.memberNumber) {
     // CSV 데이터가 필요한 단계인 경우 로드
     if (appState.currentStage >= 1 && appState.currentStage <= 4) {
       try {
@@ -2611,6 +2799,22 @@ async function init() {
         }
       } catch (error) {
         console.error('CSV 데이터 로드 실패:', error)
+      }
+    }
+    
+    // 4단계인 경우 모둠 제안 불러오기
+    if (appState.currentStage === 4) {
+      try {
+        if (db && appState.teamId) {
+          const teamKey = `team${appState.teamId}`
+          const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+          const snapshot = await get(teamProposalRef)
+          if (snapshot.exists()) {
+            appState.teamProposal = snapshot.val()
+          }
+        }
+      } catch (error) {
+        console.error('모둠 제안 로드 실패:', error)
       }
     }
     
@@ -2639,29 +2843,9 @@ async function init() {
       }
     }, 100)
   } else if (appState.currentStage === 4) {
-    // 4단계 복원: 제안 입력 필드 복원
+    // 4단계 복원: 모둠 제안 실시간 동기화 설정
     setTimeout(() => {
-      const proposalProblem = document.getElementById('proposal-problem')
-      const proposalSolution = document.getElementById('proposal-solution')
-      const proposalReason = document.getElementById('proposal-reason')
-      const combineBtn = document.getElementById('combine-btn')
-      
-      if (proposalProblem && appState.proposal.problem) {
-        proposalProblem.value = appState.proposal.problem
-      }
-      if (proposalSolution && appState.proposal.solution) {
-        proposalSolution.value = appState.proposal.solution
-      }
-      if (proposalReason && appState.proposal.reason) {
-        proposalReason.value = appState.proposal.reason
-      }
-      
-      // 모든 필드가 채워져 있으면 combine 버튼 활성화
-      if (proposalProblem && proposalSolution && proposalReason && combineBtn) {
-        combineBtn.disabled = !(proposalProblem.value.trim() && 
-                               proposalSolution.value.trim() && 
-                               proposalReason.value.trim())
-      }
+      setupTeamProposalRealtimeSync()
     }, 100)
   } else if (appState.currentStage === 6) {
     setTimeout(() => {
