@@ -154,6 +154,19 @@ async function renderApp() {
 
 // 현재 단계 렌더링
 async function renderCurrentStage() {
+  // 모둠 정보가 필요한 단계(1~7)인데 모둠 정보가 없으면 0단계로 리다이렉트
+  if (appState.currentStage >= 1 && appState.currentStage <= 7) {
+    if (!appState.teamId || !appState.memberNumber) {
+      console.log('모둠 정보가 없어서 0단계로 리다이렉트합니다.')
+      appState.currentStage = 0
+      // localStorage도 초기화
+      localStorage.removeItem('currentStage')
+      localStorage.removeItem('teamId')
+      localStorage.removeItem('memberNumber')
+      return renderStage0()
+    }
+  }
+  
   switch (appState.currentStage) {
     case 0: return renderStage0()
     case 1: return renderStage1()
@@ -793,16 +806,36 @@ async function renderStage5() {
           ⏰ 투표가 종료되어 더 이상 투표할 수 없습니다.
         </div>
       ` : `
-        <div style="text-align: center; margin-top: 30px; color: var(--winter-blue-600); font-size: 0.9em;">
-          💡 다른 학생들이 제안을 추가하면 자동으로 업데이트됩니다!
+        <div class="question-card" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-left: 5px solid #4caf50; margin-top: 30px;">
+          <h3 style="color: #2e7d32; margin-bottom: 10px;">👥 모둠 협업 모드</h3>
+          <p style="color: #1b5e20; line-height: 1.8;">
+            이 투표는 ${appState.teamId}모둠 친구들과 실시간으로 공유됩니다.<br>
+            친구들이 투표하는 내용이 자동으로 저장되고 보입니다! 💬<br>
+            <strong>모둠별로 토의한 후 투표를 완료해주세요.</strong>
+          </p>
         </div>
       `}
     </div>
   `
   
+  // 모둠 투표 불러오기 (초기 로드)
+  if (db && appState.teamId) {
+    try {
+      const teamKey = `team${appState.teamId}`
+      const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
+      const snapshot = await get(teamVotesRef)
+      if (snapshot.exists()) {
+        appState.votes = snapshot.val()
+      }
+    } catch (error) {
+      console.error('모둠 투표 로드 실패:', error)
+    }
+  }
+  
   // 실시간 업데이트 설정
   setTimeout(() => {
     setupRealtimeUpdates()
+    setupTeamVotesRealtimeSync() // 모둠 투표 실시간 동기화
   }, 100)
 }
 
@@ -883,6 +916,33 @@ function updateTeamProposalUI(teamProposal) {
   }
 }
 
+// 모둠 투표 실시간 저장 (디바운싱 적용)
+let saveVoteTimeout = null
+async function saveTeamVoteRealtime(proposalIndex, criteria, score) {
+  if (!db || !appState.teamId) return
+  
+  const teamKey = `team${appState.teamId}`
+  const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
+  
+  // 현재 모둠 투표 가져오기
+  const currentTeamVotes = appState.votes || {}
+  
+  // 디바운싱 (500ms 후 저장)
+  clearTimeout(saveVoteTimeout)
+  saveVoteTimeout = setTimeout(async () => {
+    try {
+      await update(teamVotesRef, {
+        [proposalIndex]: {
+          ...currentTeamVotes[proposalIndex],
+          [criteria]: score
+        }
+      })
+    } catch (error) {
+      console.error('모둠 투표 저장 실패:', error)
+    }
+  }, 500)
+}
+
 // 모둠 제안 저장 (디바운싱 적용)
 let saveTimeout = null
 async function saveTeamProposal(field, value) {
@@ -913,6 +973,58 @@ async function saveTeamProposal(field, value) {
       console.error('모둠 제안 저장 실패:', error)
     }
   }, 500)
+}
+
+// 모둠 투표 실시간 동기화 (5단계)
+function setupTeamVotesRealtimeSync() {
+  if (!db || !appState.teamId) return
+  
+  const teamKey = `team${appState.teamId}`
+  const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
+  
+  // 실시간 동기화
+  const unsubscribe = onValue(teamVotesRef, (snapshot) => {
+    if (snapshot.exists() && appState.currentStage === 5) {
+      const teamVotes = snapshot.val()
+      appState.votes = teamVotes || {}
+      
+      // UI 업데이트 (선택된 버튼 표시)
+      updateVotingUI(teamVotes)
+      
+      // 투표 완료 상태 확인
+      checkVotingComplete()
+    }
+  }, (error) => {
+    console.error('모둠 투표 실시간 동기화 오류:', error)
+  })
+  
+  appState.realtimeListeners.push(unsubscribe)
+}
+
+// 투표 UI 업데이트 (다른 멤버의 투표 반영)
+function updateVotingUI(teamVotes) {
+  if (!teamVotes) return
+  
+  Object.keys(teamVotes).forEach(proposalIndex => {
+    const vote = teamVotes[proposalIndex]
+    if (!vote) return
+    
+    Object.keys(vote).forEach(criteria => {
+      const score = vote[criteria]
+      if (score) {
+        // 해당 버튼 선택 표시
+        const btn = document.querySelector(
+          `.rating-btn[data-proposal="${proposalIndex}"][data-criteria="${criteria}"][data-score="${score}"]`
+        )
+        if (btn) {
+          // 같은 기준의 다른 버튼들 해제
+          const parent = btn.parentElement
+          parent.querySelectorAll('.rating-btn').forEach(b => b.classList.remove('selected'))
+          btn.classList.add('selected')
+        }
+      }
+    })
+  })
 }
 
 // 실시간 업데이트 설정 (5단계용)
@@ -2026,6 +2138,11 @@ function attachEventListeners() {
       appState.votes[proposalIndex][criteria] = score
       saveProgress() // 진행 상태 저장
       
+      // 모둠별 투표를 Firebase에 실시간 저장 (디바운싱)
+      if (db && appState.teamId) {
+        saveTeamVoteRealtime(proposalIndex, criteria, score)
+      }
+      
       // 모든 투표가 완료되었는지 확인
       checkVotingComplete()
     })
@@ -2569,6 +2686,14 @@ async function submitVotes() {
     return
   }
   
+  // 확인 창 표시
+  const confirmMessage = `투표를 완료하시겠습니까?\n\n모둠별로 토의하신 결과입니까?\n\n확인 = 투표 완료\n취소 = 다시 검토하기`
+  const confirmed = confirm(confirmMessage)
+  
+  if (!confirmed) {
+    return // 취소하면 아무것도 하지 않음
+  }
+  
   if (!db) {
     // Firebase가 없으면 localStorage에만 저장
     localStorage.setItem('votes', JSON.stringify(appState.votes))
@@ -2786,13 +2911,9 @@ async function init() {
   // 진행 상태 복원
   loadProgress()
   
-  // 0단계(로그인 화면)에서는 진행 상태를 무시하고 항상 0단계를 보여줌
-  // URL에 stage 파라미터가 없으면 0단계로 리셋
-  const urlParams = new URLSearchParams(window.location.search)
-  const stageParam = urlParams.get('stage')
-  
-  // 모둠 정보가 없으면 0단계로 리셋 (새 사용자)
+  // 모둠 정보가 없으면 무조건 0단계로 리셋 (새 사용자 또는 다른 브라우저)
   if (!appState.teamId || !appState.memberNumber) {
+    console.log('모둠 정보가 없어서 초기화합니다.')
     appState.currentStage = 0
     appState.teamId = null
     appState.memberNumber = null
@@ -2802,7 +2923,7 @@ async function init() {
     appState.teamProposal = null
     appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
     appState.votes = {}
-    // localStorage도 초기화
+    // localStorage도 완전히 초기화
     localStorage.removeItem('currentStage')
     localStorage.removeItem('teamId')
     localStorage.removeItem('memberNumber')
@@ -2811,6 +2932,9 @@ async function init() {
     localStorage.removeItem('appStateProposal')
     localStorage.removeItem('appStateQuestionAnswers')
     localStorage.removeItem('appStateVotes')
+  } else if (appState.currentStage === 0) {
+    // 모둠 정보는 있지만 단계가 0이면 localStorage에서 단계도 초기화
+    localStorage.removeItem('currentStage')
   }
   
   // 복원된 단계가 0이 아니고 모둠 정보가 있으면 해당 단계로 이동
