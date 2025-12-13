@@ -4,7 +4,7 @@ import { ref, set, push, get, onValue, update } from 'firebase/database'
 
 // 세션 ID 생성 (각 브라우저 세션마다 고유한 ID)
 function generateSessionId() {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
 
 // 세션 ID 가져오기 또는 생성
@@ -170,27 +170,45 @@ async function renderApp() {
 
 // 현재 단계 렌더링
 async function renderCurrentStage() {
+  console.log('renderCurrentStage 호출:', { 
+    currentStage: appState.currentStage, 
+    teamId: appState.teamId, 
+    studentName: appState.studentName 
+  })
+  
   // 모둠 정보가 필요한 단계(1~7)인데 모둠 정보가 없으면 0단계로 리다이렉트
+  // 단, localStorage에 저장된 정보가 있으면 복원 시도
   if (appState.currentStage >= 1 && appState.currentStage <= 7) {
     if (!appState.teamId || !appState.studentName || !appState.studentName.trim()) {
-      console.log('모둠 정보가 없어서 0단계로 리다이렉트합니다. localStorage를 완전히 초기화합니다.')
-      appState.currentStage = 0
-      appState.teamId = null
-      appState.studentName = ''
-      appState.answers = {}
-      appState.proposal = { problem: '', solution: '', reason: '' }
-      appState.teamProposal = null
-      appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-      appState.votes = {}
-      // localStorage도 완전히 초기화
-      localStorage.removeItem('currentStage')
-      localStorage.removeItem('teamId')
-      localStorage.removeItem('studentName')
-      localStorage.removeItem('appStateAnswers')
-      localStorage.removeItem('appStateProposal')
-      localStorage.removeItem('appStateQuestionAnswers')
-      localStorage.removeItem('appStateVotes')
-      return renderStage0()
+      // localStorage에서 복원 시도
+      const savedTeamId = localStorage.getItem('teamId')
+      const savedStudentName = localStorage.getItem('studentName')
+      
+      if (savedTeamId && savedStudentName) {
+        console.log('localStorage에서 모둠 정보 복원 시도')
+        appState.teamId = parseInt(savedTeamId, 10)
+        appState.studentName = savedStudentName
+      } else {
+        console.log('모둠 정보가 없어서 0단계로 리다이렉트합니다.')
+        console.log('현재 상태:', { teamId: appState.teamId, studentName: appState.studentName })
+        appState.currentStage = 0
+        appState.teamId = null
+        appState.studentName = ''
+        appState.answers = {}
+        appState.proposal = { problem: '', solution: '', reason: '' }
+        appState.teamProposal = null
+        appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+        appState.votes = {}
+        // localStorage도 완전히 초기화
+        localStorage.removeItem('currentStage')
+        localStorage.removeItem('teamId')
+        localStorage.removeItem('studentName')
+        localStorage.removeItem('appStateAnswers')
+        localStorage.removeItem('appStateProposal')
+        localStorage.removeItem('appStateQuestionAnswers')
+        localStorage.removeItem('appStateVotes')
+        return renderStage0()
+      }
     }
   }
   
@@ -1726,14 +1744,41 @@ function attachEventListeners() {
     
     function updateStartButton() {
       if (startBtn) {
-        startBtn.disabled = !(appState.teamId && appState.studentName && appState.studentName.trim())
+        const isValid = appState.teamId && appState.studentName && appState.studentName.trim()
+        startBtn.disabled = !isValid
+        console.log('시작하기 버튼 상태 업데이트:', { disabled: !isValid, teamId: appState.teamId, studentName: appState.studentName })
       }
     }
     
-    startBtn.addEventListener('click', async () => {
-      if (appState.teamId && appState.studentName && appState.studentName.trim()) {
+    // 초기 버튼 상태 설정
+    updateStartButton()
+    
+    startBtn.addEventListener('click', async (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      
+      console.log('시작하기 버튼 클릭됨')
+      console.log('현재 상태:', { teamId: appState.teamId, studentName: appState.studentName })
+      
+      if (!appState.teamId) {
+        alert('모둠을 선택해주세요.')
+        return
+      }
+      
+      if (!appState.studentName || !appState.studentName.trim()) {
+        alert('이름을 입력해주세요.')
+        return
+      }
+      
+      // 버튼 비활성화 (중복 클릭 방지)
+      startBtn.disabled = true
+      startBtn.textContent = '로딩 중...'
+      
+      try {
+        console.log('조건 통과: 시작 처리 시작')
         // 세션 ID 가져오기 또는 생성
         appState.sessionId = getOrCreateSessionId()
+        console.log('세션 ID:', appState.sessionId)
         
         // 저장된 정보와 현재 입력한 정보 비교 (모둠, 이름, 세션 ID 모두 체크)
         const savedTeamId = localStorage.getItem('teamId')
@@ -1748,40 +1793,29 @@ function attachEventListeners() {
         // 세션 ID가 다르면 다른 사용자로 간주 (같은 모둠/이름이라도 다른 사람일 수 있음)
         const isSameUser = savedTeamId === currentTeamId && 
                           savedStudentName === currentStudentName &&
-                          savedSessionId === currentSessionId
+                          savedSessionId === currentSessionId &&
+                          savedTeamId !== null && 
+                          savedStudentName !== null &&
+                          savedSessionId !== null
         
-        // 다른 사용자이거나 정보가 변경된 경우 초기화
-        if (!isSameUser) {
-          if (savedTeamId !== null && savedStudentName !== null) {
-            console.log('다른 사용자 또는 정보 변경 감지. 초기화합니다.')
-            console.log(`이전: ${savedTeamId}모둠 ${savedStudentName} (세션: ${savedSessionId?.substr(0, 10)}...)`)
-            console.log(`현재: ${currentTeamId}모둠 ${currentStudentName} (세션: ${currentSessionId.substr(0, 10)}...)`)
-          }
-          // 모든 진행상태 초기화
-          appState.currentStage = 0
-          appState.answers = {}
-          appState.proposal = { problem: '', solution: '', reason: '' }
-          appState.teamProposal = null
-          appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-          appState.votes = {}
-          localStorage.removeItem('currentStage')
-          localStorage.removeItem('appStateAnswers')
-          localStorage.removeItem('appStateProposal')
-          localStorage.removeItem('appStateQuestionAnswers')
-          localStorage.removeItem('appStateVotes')
-        }
+        console.log('사용자 확인:', { 
+          isSameUser, 
+          savedTeamId, currentTeamId,
+          savedStudentName, currentStudentName,
+          savedSessionId: savedSessionId?.slice(0, 10), 
+          currentSessionId: currentSessionId?.slice(0, 10)
+        })
         
-        // 모둠 정보, 이름, 세션 ID 저장
+        // 모둠 정보, 이름, 세션 ID 저장 (항상 저장)
         localStorage.setItem('teamId', currentTeamId)
         localStorage.setItem('studentName', currentStudentName)
         localStorage.setItem('sessionId', currentSessionId)
         
-        // Firebase에 모둠 멤버 정보 저장
-        const teamKey = `team${appState.teamId}`
-        const memberKey = `${teamKey}-${currentStudentName}-${currentSessionId.substr(0, 10)}`
-        
-        if (db) {
+        // Firebase에 모둠 멤버 정보 저장 (오류가 나도 진행 가능하도록)
+        if (db && appState.teamId) {
           try {
+            const teamKey = `team${appState.teamId}`
+            const memberKey = `${teamKey}-${currentStudentName}-${currentSessionId ? currentSessionId.slice(0, 10) : 'unknown'}`
             const memberRef = ref(db, `teams/${teamKey}/members/${memberKey}`)
             await set(memberRef, {
               name: currentStudentName,
@@ -1789,7 +1823,8 @@ function attachEventListeners() {
               joinedAt: new Date().toISOString()
             })
           } catch (error) {
-            console.error('멤버 정보 저장 실패:', error)
+            console.error('멤버 정보 저장 실패 (계속 진행):', error)
+            // Firebase 저장 실패해도 진행 가능하도록 처리
           }
         }
         
@@ -1923,52 +1958,77 @@ function attachEventListeners() {
             }
           }
         } else {
-          // 처음부터 시작 (새 사용자 또는 다른 사용자)
+          // 처음부터 시작 (새 사용자 또는 다른 사용자) - 무조건 1단계로
+          console.log('새 사용자입니다. 1단계부터 시작합니다.')
+          console.log(`현재: ${currentTeamId}모둠 ${currentStudentName}`)
+          
+          // 진행상태 초기화 및 설정
+          appState.currentStage = 1
+          appState.teamId = parseInt(currentTeamId, 10)  // 확실히 설정
+          appState.studentName = currentStudentName  // 확실히 설정
+          appState.answers = {}
+          appState.proposal = { problem: '', solution: '', reason: '' }
+          appState.teamProposal = null
+          appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+          appState.votes = {}
+          
+          // 진행상태 저장
+          saveProgress()
+          console.log('저장 완료, 현재 상태:', { 
+            currentStage: appState.currentStage, 
+            teamId: appState.teamId, 
+            studentName: appState.studentName 
+          })
+          
+          // CSV 파일 로드 (실패해도 진행)
           try {
-            console.log('새 사용자입니다. 1단계부터 시작합니다.')
-            console.log(`현재: ${currentTeamId}모둠 ${currentStudentName} (세션: ${currentSessionId.substr(0, 10)}...)`)
-            
-            // 진행상태 초기화 확인
-            appState.currentStage = 1
-            appState.answers = {}
-            appState.proposal = { problem: '', solution: '', reason: '' }
-            appState.teamProposal = null
-            appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-            appState.votes = {}
-            
             console.log('CSV 파일 로드 시작...')
-            appState.parkingData = await parseCSV('/illegal_parking.csv')
-            console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
-            appState.cctvData = await parseCSV('/cctv.csv')
-            console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
-            
-            saveProgress()
-            await renderApp()
-            setTimeout(() => {
-              renderCharts()
-            }, 100)
+            if (!appState.parkingData) {
+              appState.parkingData = await parseCSV('/illegal_parking.csv')
+              console.log('illegal_parking.csv 로드 완료')
+            }
+            if (!appState.cctvData) {
+              appState.cctvData = await parseCSV('/cctv.csv')
+              console.log('cctv.csv 로드 완료')
+            }
           } catch (error) {
-            console.error('데이터 로드 실패:', error)
-            alert('데이터를 불러오는데 실패했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
+            console.error('CSV 데이터 로드 실패 (계속 진행):', error)
           }
+          
+          // renderApp 호출
+          console.log('renderApp 호출, currentStage:', appState.currentStage)
+          await renderApp()
+          console.log('renderApp 완료')
+          
+          setTimeout(() => {
+            renderCharts()
+          }, 100)
         }
+      } catch (error) {
+        console.error('시작하기 버튼 처리 중 오류:', error)
+        alert('오류가 발생했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
+        // 오류 발생 시 버튼 복구
+        startBtn.disabled = false
+        startBtn.textContent = '시작하기 🚀'
       }
     })
-    
-    // 관리자 페이지 버튼
-    const adminBtn = document.getElementById('admin-btn')
-    if (adminBtn) {
-      adminBtn.addEventListener('click', () => {
-        const password = prompt('관리자 비밀번호를 입력하세요:')
-        if (password === 'teacher2024' || password === 'admin') {
-          appState.currentStage = 8
-          saveProgress()
-          renderApp()
-        } else if (password !== null) {
-          alert('비밀번호가 올바르지 않습니다.')
-        }
-      })
-    }
+  } else {
+    console.error('필수 요소를 찾을 수 없습니다:', { teamSelect, nameInput, startBtn })
+  }
+  
+  // 관리자 페이지 버튼
+  const adminBtn = document.getElementById('admin-btn')
+  if (adminBtn) {
+    adminBtn.addEventListener('click', () => {
+      const password = prompt('관리자 비밀번호를 입력하세요:')
+      if (password === 'teacher2024' || password === 'admin') {
+        appState.currentStage = 8
+        saveProgress()
+        renderApp()
+      } else if (password !== null) {
+        alert('비밀번호가 올바르지 않습니다.')
+      }
+    })
   }
   
   // 1단계: 가정통신문 드래그 앤 드롭
