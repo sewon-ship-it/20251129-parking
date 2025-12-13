@@ -172,11 +172,10 @@ async function renderApp() {
 async function renderCurrentStage() {
   // 모둠 정보가 필요한 단계(1~7)인데 모둠 정보가 없으면 0단계로 리다이렉트
   if (appState.currentStage >= 1 && appState.currentStage <= 7) {
-    if (!appState.teamId || !appState.memberNumber) {
+    if (!appState.teamId || !appState.studentName || !appState.studentName.trim()) {
       console.log('모둠 정보가 없어서 0단계로 리다이렉트합니다. localStorage를 완전히 초기화합니다.')
       appState.currentStage = 0
       appState.teamId = null
-      appState.memberNumber = null
       appState.studentName = ''
       appState.answers = {}
       appState.proposal = { problem: '', solution: '', reason: '' }
@@ -186,7 +185,6 @@ async function renderCurrentStage() {
       // localStorage도 완전히 초기화
       localStorage.removeItem('currentStage')
       localStorage.removeItem('teamId')
-      localStorage.removeItem('memberNumber')
       localStorage.removeItem('studentName')
       localStorage.removeItem('appStateAnswers')
       localStorage.removeItem('appStateProposal')
@@ -226,7 +224,7 @@ function renderStage0() {
         </p>
         
         <div class="question-card" style="margin-bottom: 30px; max-width: 600px; margin-left: auto; margin-right: auto;">
-          <h3 style="color: var(--winter-blue-700); margin-bottom: 20px;">모둠 및 번호 선택</h3>
+          <h3 style="color: var(--winter-blue-700); margin-bottom: 20px;">모둠 및 이름 입력</h3>
           
           <div class="input-group" style="margin-bottom: 25px;">
             <label class="input-label">모둠을 선택하세요 (1~6모둠)</label>
@@ -239,19 +237,9 @@ function renderStage0() {
           </div>
           
           <div class="input-group" style="margin-bottom: 25px;">
-            <label class="input-label">모둠 내 번호를 선택하세요 (1~4번)</label>
-            <select id="member-select" class="input-field" style="font-size: 1.1em; padding: 12px;">
-              <option value="">번호 선택</option>
-              ${[1, 2, 3, 4].map(num => `
-                <option value="${num}" ${appState.memberNumber === num ? 'selected' : ''}>${num}번</option>
-              `).join('')}
-            </select>
-          </div>
-          
-          <div class="input-group" style="margin-bottom: 25px;">
-            <label class="input-label">이름 (선택사항)</label>
-            <input type="text" id="student-name" class="input-field" placeholder="이름을 입력하세요 (선택사항)" 
-                   value="${appState.studentName}" maxlength="20">
+            <label class="input-label">이름을 입력하세요 (필수)</label>
+            <input type="text" id="student-name" class="input-field" placeholder="이름을 입력하세요" 
+                   value="${appState.studentName}" maxlength="20" required>
           </div>
           
           <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 15px; border-radius: 10px; margin-top: 20px; border-left: 4px solid var(--winter-blue-500);">
@@ -264,7 +252,7 @@ function renderStage0() {
           </div>
         </div>
         
-        <button class="btn btn-success" id="start-btn" ${(appState.teamId && appState.memberNumber) ? '' : 'disabled'}>
+        <button class="btn btn-success" id="start-btn" ${(appState.teamId && appState.studentName && appState.studentName.trim()) ? '' : 'disabled'}>
           시작하기 🚀
         </button>
         <div style="margin-top: 30px; padding-top: 20px; border-top: 2px dashed var(--winter-blue-300);">
@@ -1718,64 +1706,56 @@ async function clearAllData() {
 
 // 이벤트 리스너 연결
 function attachEventListeners() {
-  // 0단계: 모둠 및 번호 선택
+  // 0단계: 모둠 및 이름 입력
   const teamSelect = document.getElementById('team-select')
-  const memberSelect = document.getElementById('member-select')
   const nameInput = document.getElementById('student-name')
   const startBtn = document.getElementById('start-btn')
   
-  if (teamSelect && memberSelect && startBtn) {
+  if (teamSelect && nameInput && startBtn) {
     teamSelect.addEventListener('change', (e) => {
       appState.teamId = e.target.value ? parseInt(e.target.value) : null
       updateStartButton()
       saveProgress()
     })
     
-    memberSelect.addEventListener('change', (e) => {
-      appState.memberNumber = e.target.value ? parseInt(e.target.value) : null
+    nameInput.addEventListener('input', (e) => {
+      appState.studentName = e.target.value.trim()
       updateStartButton()
       saveProgress()
     })
     
-    if (nameInput) {
-      nameInput.addEventListener('input', (e) => {
-        appState.studentName = e.target.value.trim()
-        saveProgress()
-      })
-    }
-    
     function updateStartButton() {
       if (startBtn) {
-        startBtn.disabled = !(appState.teamId && appState.memberNumber)
+        startBtn.disabled = !(appState.teamId && appState.studentName && appState.studentName.trim())
       }
     }
     
     startBtn.addEventListener('click', async () => {
-      if (appState.teamId && appState.memberNumber) {
+      if (appState.teamId && appState.studentName && appState.studentName.trim()) {
         // 세션 ID 가져오기 또는 생성
         appState.sessionId = getOrCreateSessionId()
         
-        // 저장된 정보와 현재 입력한 정보 비교 (모둠, 번호, 세션 ID 모두 체크)
+        // 저장된 정보와 현재 입력한 정보 비교 (모둠, 이름, 세션 ID 모두 체크)
         const savedTeamId = localStorage.getItem('teamId')
-        const savedMemberNumber = localStorage.getItem('memberNumber')
+        const savedStudentName = localStorage.getItem('studentName')
         const savedSessionId = localStorage.getItem('sessionId')
         
         const currentTeamId = appState.teamId.toString()
-        const currentMemberNumber = appState.memberNumber.toString()
+        const currentStudentName = appState.studentName.trim()
         const currentSessionId = appState.sessionId
         
-        // 저장된 모둠, 번호, 세션 ID가 모두 일치하는지 확인
-        // 세션 ID가 다르면 다른 사용자로 간주 (같은 모둠/번호라도 다른 사람일 수 있음)
+        // 저장된 모둠, 이름, 세션 ID가 모두 일치하는지 확인
+        // 세션 ID가 다르면 다른 사용자로 간주 (같은 모둠/이름이라도 다른 사람일 수 있음)
         const isSameUser = savedTeamId === currentTeamId && 
-                          savedMemberNumber === currentMemberNumber &&
+                          savedStudentName === currentStudentName &&
                           savedSessionId === currentSessionId
         
         // 다른 사용자이거나 정보가 변경된 경우 초기화
         if (!isSameUser) {
-          if (savedTeamId !== null && savedMemberNumber !== null) {
+          if (savedTeamId !== null && savedStudentName !== null) {
             console.log('다른 사용자 또는 정보 변경 감지. 초기화합니다.')
-            console.log(`이전: ${savedTeamId}모둠 ${savedMemberNumber}번 (세션: ${savedSessionId?.substr(0, 10)}...)`)
-            console.log(`현재: ${currentTeamId}모둠 ${currentMemberNumber}번 (세션: ${currentSessionId.substr(0, 10)}...)`)
+            console.log(`이전: ${savedTeamId}모둠 ${savedStudentName} (세션: ${savedSessionId?.substr(0, 10)}...)`)
+            console.log(`현재: ${currentTeamId}모둠 ${currentStudentName} (세션: ${currentSessionId.substr(0, 10)}...)`)
           }
           // 모든 진행상태 초기화
           appState.currentStage = 0
@@ -1791,22 +1771,21 @@ function attachEventListeners() {
           localStorage.removeItem('appStateVotes')
         }
         
-        // 모둠 정보와 세션 ID 저장
+        // 모둠 정보, 이름, 세션 ID 저장
         localStorage.setItem('teamId', currentTeamId)
-        localStorage.setItem('memberNumber', currentMemberNumber)
+        localStorage.setItem('studentName', currentStudentName)
         localStorage.setItem('sessionId', currentSessionId)
         
-        // 모둠 정보 저장
+        // Firebase에 모둠 멤버 정보 저장
         const teamKey = `team${appState.teamId}`
-        const memberKey = `${teamKey}-member${appState.memberNumber}`
+        const memberKey = `${teamKey}-${currentStudentName}-${currentSessionId.substr(0, 10)}`
         
-        // Firebase에 모둠 멤버 정보 저장 (선택사항)
-        if (db && appState.studentName) {
+        if (db) {
           try {
             const memberRef = ref(db, `teams/${teamKey}/members/${memberKey}`)
             await set(memberRef, {
-              name: appState.studentName || `멤버${appState.memberNumber}`,
-              memberNumber: appState.memberNumber,
+              name: currentStudentName,
+              sessionId: currentSessionId,
               joinedAt: new Date().toISOString()
             })
           } catch (error) {
@@ -1947,7 +1926,7 @@ function attachEventListeners() {
           // 처음부터 시작 (새 사용자 또는 다른 사용자)
           try {
             console.log('새 사용자입니다. 1단계부터 시작합니다.')
-            console.log(`현재: ${currentTeamId}모둠 ${currentMemberNumber}번 (세션: ${currentSessionId.substr(0, 10)}...)`)
+            console.log(`현재: ${currentTeamId}모둠 ${currentStudentName} (세션: ${currentSessionId.substr(0, 10)}...)`)
             
             // 진행상태 초기화 확인
             appState.currentStage = 1
@@ -3108,9 +3087,8 @@ async function generateSpeech() {
 function saveProgress() {
   try {
     localStorage.setItem('currentStage', appState.currentStage.toString())
-    localStorage.setItem('studentName', appState.studentName)
+    localStorage.setItem('studentName', appState.studentName || '')
     localStorage.setItem('teamId', appState.teamId ? appState.teamId.toString() : '')
-    localStorage.setItem('memberNumber', appState.memberNumber ? appState.memberNumber.toString() : '')
     localStorage.setItem('appStateAnswers', JSON.stringify(appState.answers))
     localStorage.setItem('appStateProposal', JSON.stringify(appState.proposal))
     localStorage.setItem('appStateQuestionAnswers', JSON.stringify(appState.questionAnswers))
@@ -3129,27 +3107,27 @@ function loadProgress() {
     const savedStage = localStorage.getItem('currentStage')
     const savedName = localStorage.getItem('studentName')
     const savedTeamId = localStorage.getItem('teamId')
-    const savedMemberNumber = localStorage.getItem('memberNumber')
+    const savedStudentName = localStorage.getItem('studentName')
     const savedSessionId = localStorage.getItem('sessionId')
     const savedAnswers = localStorage.getItem('appStateAnswers')
     const savedProposal = localStorage.getItem('appStateProposal')
     const savedQuestionAnswers = localStorage.getItem('appStateQuestionAnswers')
     const savedVotes = localStorage.getItem('appStateVotes')
     
-    // 모둠 정보와 세션 ID를 확인
+    // 모둠 정보, 이름, 세션 ID를 확인
     // 세션 ID가 다르면 다른 사용자로 간주
     let hasTeamInfo = false
     if (savedTeamId !== null && savedTeamId !== '' && 
-        savedMemberNumber !== null && savedMemberNumber !== '' &&
+        savedStudentName !== null && savedStudentName !== '' &&
         savedSessionId === appState.sessionId) {
       appState.teamId = parseInt(savedTeamId, 10)
-      appState.memberNumber = parseInt(savedMemberNumber, 10)
+      appState.studentName = savedStudentName
       hasTeamInfo = true
-    } else if (savedTeamId !== null || savedMemberNumber !== null) {
+    } else if (savedTeamId !== null || savedStudentName !== null) {
       // 세션 ID가 다르면 다른 사용자이므로 모둠 정보 초기화
       console.log('세션 ID가 다릅니다. 다른 사용자로 간주하여 초기화합니다.')
       localStorage.removeItem('teamId')
-      localStorage.removeItem('memberNumber')
+      localStorage.removeItem('studentName')
       localStorage.removeItem('currentStage')
       localStorage.removeItem('appStateAnswers')
       localStorage.removeItem('appStateProposal')
@@ -3160,12 +3138,7 @@ function loadProgress() {
     // 페이지 로드 시에는 모둠 정보만 복원하고, 진행상태는 복원하지 않음
     // 진행상태는 0단계에서 "시작하기"를 눌렀을 때만 복원
     if (hasTeamInfo) {
-      console.log(`저장된 모둠 정보 확인: ${appState.teamId}모둠 ${appState.memberNumber}번 (0단계에서 확인 후 진행상태 복원)`)
-      
-      // 이름만 복원 (0단계에서 표시용)
-      if (savedName !== null) {
-        appState.studentName = savedName
-      }
+      console.log(`저장된 모둠 정보 확인: ${appState.teamId}모둠 ${appState.studentName} (0단계에서 확인 후 진행상태 복원)`)
       
       // 진행상태는 복원하지 않음 - 무조건 0단계로 시작
       appState.currentStage = 0
@@ -3174,7 +3147,6 @@ function loadProgress() {
       console.log('모둠 정보가 없어서 0단계로 시작합니다. localStorage를 초기화합니다.')
       appState.currentStage = 0
       appState.teamId = null
-      appState.memberNumber = null
       appState.studentName = ''
       appState.answers = {}
       appState.proposal = { problem: '', solution: '', reason: '' }
@@ -3184,7 +3156,6 @@ function loadProgress() {
       // localStorage도 완전히 초기화 (다른 학생이 접속했을 때 이전 데이터가 보이지 않도록)
       localStorage.removeItem('currentStage')
       localStorage.removeItem('teamId')
-      localStorage.removeItem('memberNumber')
       localStorage.removeItem('studentName')
       localStorage.removeItem('appStateAnswers')
       localStorage.removeItem('appStateProposal')
@@ -3208,9 +3179,9 @@ async function init() {
   loadProgress()
   
   // 페이지 로드 시에는 무조건 0단계로 시작
-  // 진행상태는 0단계에서 모둠/번호를 선택하고 "시작하기"를 눌렀을 때만 복원
+  // 진행상태는 0단계에서 모둠/이름을 입력하고 "시작하기"를 눌렀을 때만 복원
   appState.currentStage = 0
-  console.log('페이지 로드: 무조건 0단계로 시작합니다. 모둠/번호 선택 후 진행상태를 복원합니다.')
+  console.log('페이지 로드: 무조건 0단계로 시작합니다. 모둠/이름 입력 후 진행상태를 복원합니다.')
   await renderApp()
   
   // 진행상태 복원은 0단계에서 "시작하기" 버튼을 눌렀을 때만 수행
