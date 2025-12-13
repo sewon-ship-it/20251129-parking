@@ -1635,12 +1635,55 @@ async function deleteProposal(proposalId, studentName) {
     return
   }
   
+  // 삭제할 제안의 인덱스 찾기
+  const allProposals = await loadProposalsFromFirebase()
+  const proposalIndex = allProposals.findIndex(p => p.id === proposalId)
+  
+  if (proposalIndex === -1) {
+    alert('❌ 제안을 찾을 수 없습니다.')
+    return
+  }
+  
+  // 투표 데이터에서 해당 제안에 대한 투표 삭제 및 인덱스 재조정
+  const votes = await loadVotesFromFirebase()
+  const updatedVotes = {}
+  
+  Object.keys(votes).forEach(studentName => {
+    const studentVote = votes[studentName]
+    if (!studentVote) return
+    
+    const updatedStudentVote = {}
+    let hasAnyVote = false
+    
+    // 삭제할 인덱스보다 작은 인덱스는 그대로 유지
+    for (let i = 0; i < proposalIndex; i++) {
+      if (studentVote[i]) {
+        updatedStudentVote[i] = studentVote[i]
+        hasAnyVote = true
+      }
+    }
+    
+    // 삭제할 인덱스보다 큰 인덱스는 1씩 감소
+    for (let i = proposalIndex + 1; i < allProposals.length; i++) {
+      if (studentVote[i]) {
+        updatedStudentVote[i - 1] = studentVote[i]
+        hasAnyVote = true
+      }
+    }
+    
+    // 투표가 하나라도 있으면 추가
+    if (hasAnyVote) {
+      updatedVotes[studentName] = updatedStudentVote
+    }
+  })
+  
   if (!db) {
     // Firebase가 없으면 localStorage에서 삭제
-    const allProposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
     const filteredProposals = allProposals.filter(p => p.id !== proposalId)
     localStorage.setItem('allProposals', JSON.stringify(filteredProposals))
+    localStorage.setItem('votes', JSON.stringify(updatedVotes))
     appState.allProposals = filteredProposals
+    appState.votes = updatedVotes
     
     // 삭제된 제안 목록에 추가 (학생이 다시 4단계부터 시작할 수 있도록)
     await saveDeletedProposal(studentName)
@@ -1658,12 +1701,19 @@ async function deleteProposal(proposalId, studentName) {
     const proposalRef = ref(db, `proposals/${proposalId}`)
     await set(proposalRef, null)
     
+    // Firebase에서 투표 데이터 업데이트
+    const votesRef = ref(db, 'votes/all')
+    await set(votesRef, updatedVotes)
+    
+    // localStorage도 업데이트
+    localStorage.setItem('votes', JSON.stringify(updatedVotes))
+    
     // 로컬 상태도 업데이트
     const updatedProposals = await loadProposalsFromFirebase()
     appState.allProposals = updatedProposals
+    appState.votes = updatedVotes
     
-    // localStorage도 업데이트
-    const allProposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
+    // localStorage의 allProposals도 업데이트
     const filteredProposals = allProposals.filter(p => p.id !== proposalId)
     localStorage.setItem('allProposals', JSON.stringify(filteredProposals))
     
