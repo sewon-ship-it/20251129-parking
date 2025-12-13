@@ -243,7 +243,7 @@ function renderStage0() {
               💡 <strong>안내:</strong><br>
               • 1~3단계는 각자 문제를 풀어요<br>
               • 4단계부터는 모둠 친구들과 함께 협업해요<br>
-              • 모둠에 3명만 있어도 진행 가능해요
+              • 모둠에 1명만 있어도 진행 가능해요 (결석생이 있을 수 있으니)
             </p>
           </div>
         </div>
@@ -566,6 +566,26 @@ async function loadProposalsFromFirebase() {
     const proposals = JSON.parse(localStorage.getItem('allProposals') || '[]')
     appState.allProposals = proposals
     return proposals
+  }
+}
+
+// 모둠 내 진행 중인 인원 수 확인
+async function getActiveTeamMemberCount() {
+  if (!db || !appState.teamId) return 1
+  
+  try {
+    const teamKey = `team${appState.teamId}`
+    const membersRef = ref(db, `teams/${teamKey}/members`)
+    const snapshot = await get(membersRef)
+    
+    if (snapshot.exists()) {
+      const members = snapshot.val()
+      return Object.keys(members).length
+    }
+    return 1
+  } catch (error) {
+    console.error('모둠 멤버 수 확인 실패:', error)
+    return 1
   }
 }
 
@@ -1762,12 +1782,63 @@ function attachEventListeners() {
           }
         }
         
-        // 같은 사용자이고 진행상태가 있으면 그대로 유지, 아니면 1단계부터 시작
-        if (isSameUser && appState.currentStage > 0) {
-          // 진행상태가 있으면 그대로 유지하고 렌더링
-          console.log('같은 사용자입니다. 진행상태를 복원합니다.')
+        // 같은 사용자인 경우 localStorage에서 진행상태 복원
+        if (isSameUser) {
+          console.log('같은 사용자입니다. localStorage에서 진행상태를 복원합니다.')
+          
+          // localStorage에서 진행상태 복원
+          const savedStage = localStorage.getItem('currentStage')
+          const savedAnswers = localStorage.getItem('appStateAnswers')
+          const savedProposal = localStorage.getItem('appStateProposal')
+          const savedQuestionAnswers = localStorage.getItem('appStateQuestionAnswers')
+          const savedVotes = localStorage.getItem('appStateVotes')
+          
+          if (savedStage !== null) {
+            appState.currentStage = parseInt(savedStage, 10)
+            console.log(`진행상태 복원: ${appState.currentStage}단계`)
+          } else {
+            appState.currentStage = 1
+          }
+          
+          // 답변 복원
+          if (savedAnswers !== null) {
+            try {
+              appState.answers = JSON.parse(savedAnswers)
+            } catch (e) {
+              console.error('답변 복원 실패:', e)
+            }
+          }
+          
+          // 제안 복원
+          if (savedProposal !== null) {
+            try {
+              appState.proposal = JSON.parse(savedProposal)
+            } catch (e) {
+              console.error('제안 복원 실패:', e)
+            }
+          }
+          
+          // 질문 답변 복원
+          if (savedQuestionAnswers !== null) {
+            try {
+              appState.questionAnswers = JSON.parse(savedQuestionAnswers)
+            } catch (e) {
+              console.error('질문 답변 복원 실패:', e)
+            }
+          }
+          
+          // 투표 복원
+          if (savedVotes !== null) {
+            try {
+              appState.votes = JSON.parse(savedVotes)
+            } catch (e) {
+              console.error('투표 복원 실패:', e)
+            }
+          }
+          
+          // 모둠 정보 저장
           saveProgress()
-          renderApp()
+          
           // CSV 데이터가 필요한 단계인 경우 로드
           if (appState.currentStage >= 1 && appState.currentStage <= 4) {
             try {
@@ -1781,7 +1852,37 @@ function attachEventListeners() {
               console.error('CSV 데이터 로드 실패:', error)
             }
           }
-          if (appState.currentStage === 1) {
+          
+          // 4단계인 경우 모둠 제안 불러오기
+          if (appState.currentStage === 4) {
+            try {
+              if (db && appState.teamId) {
+                const teamKey = `team${appState.teamId}`
+                const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+                const snapshot = await get(teamProposalRef)
+                if (snapshot.exists()) {
+                  appState.teamProposal = snapshot.val()
+                }
+              }
+            } catch (error) {
+              console.error('모둠 제안 로드 실패:', error)
+            }
+          }
+          
+          // 5단계 이상인 경우 제안 불러오기
+          if (appState.currentStage >= 5) {
+            try {
+              await loadProposalsFromFirebase()
+              await loadVotesFromFirebase()
+            } catch (error) {
+              console.error('Firebase 데이터 로드 실패:', error)
+            }
+          }
+          
+          renderApp()
+          
+          // 복원된 단계에 따라 추가 작업 수행
+          if (appState.currentStage === 1 || appState.currentStage === 2) {
             setTimeout(() => {
               renderCharts()
             }, 100)
@@ -2228,6 +2329,30 @@ function attachEventListeners() {
   if (nextStageBtn) {
     nextStageBtn.addEventListener('click', async () => {
       if (appState.currentStage < 8) {
+        // 4→5, 5→6, 6→7 단계 전환 시 모둠 인원 확인
+        if (appState.currentStage === 4 || appState.currentStage === 5 || appState.currentStage === 6) {
+          const activeMemberCount = await getActiveTeamMemberCount()
+          
+          if (activeMemberCount === 1) {
+            const stageNames = {
+              4: '5단계 (투표하기)',
+              5: '6단계 (연설문 작성)',
+              6: '7단계 (대시보드 보기)'
+            }
+            const nextStageName = stageNames[appState.currentStage]
+            const confirmed = confirm(
+              `⚠️ 모둠 내 1명만 진행하는 것 맞습니까?\n\n` +
+              `현재 ${appState.teamId}모둠에서 진행 중인 인원: 1명\n\n` +
+              `만약 모둠에 다른 친구들이 출석했다면, 함께 진행하는 것이 좋습니다.\n` +
+              `정말 ${nextStageName}로 넘어가시겠습니까?`
+            )
+            
+            if (!confirmed) {
+              return // 확인 취소 시 단계 전환 중단
+            }
+          }
+        }
+        
         appState.currentStage++
         saveProgress() // 진행 상태 저장
         await renderApp()
@@ -2753,8 +2878,22 @@ async function submitVotes() {
     return
   }
   
+  // 모둠 인원 확인
+  const activeMemberCount = await getActiveTeamMemberCount()
+  
   // 확인 창 표시
-  const confirmMessage = `투표를 완료하시겠습니까?\n\n모둠별로 토의하신 결과입니까?\n\n확인 = 투표 완료\n취소 = 다시 검토하기`
+  let confirmMessage = `투표를 완료하시겠습니까?\n\n모둠별로 토의하신 결과입니까?`
+  
+  if (activeMemberCount === 1) {
+    confirmMessage = `⚠️ 모둠 내 1명만 진행하는 것 맞습니까?\n\n` +
+      `현재 ${appState.teamId}모둠에서 진행 중인 인원: 1명\n\n` +
+      `만약 모둠에 다른 친구들이 출석했다면, 함께 토의하고 투표하는 것이 좋습니다.\n` +
+      `정말 투표를 완료하시겠습니까?\n\n` +
+      `확인 = 투표 완료\n취소 = 다시 검토하기`
+  } else {
+    confirmMessage += `\n\n확인 = 투표 완료\n취소 = 다시 검토하기`
+  }
+  
   const confirmed = confirm(confirmMessage)
   
   if (!confirmed) {
@@ -2934,58 +3073,18 @@ function loadProgress() {
       hasTeamInfo = true
     }
     
-    // 모둠 정보가 있을 때만 모든 데이터 복원 (다른 학생이 접속했을 때 방지)
+    // 페이지 로드 시에는 모둠 정보만 복원하고, 진행상태는 복원하지 않음
+    // 진행상태는 0단계에서 "시작하기"를 눌렀을 때만 복원
     if (hasTeamInfo) {
-      console.log(`모둠 정보 확인: ${appState.teamId}모둠 ${appState.memberNumber}번`)
+      console.log(`저장된 모둠 정보 확인: ${appState.teamId}모둠 ${appState.memberNumber}번 (0단계에서 확인 후 진행상태 복원)`)
       
-      // currentStage 복원
-      if (savedStage !== null) {
-        appState.currentStage = parseInt(savedStage, 10)
-        console.log(`진행상태 복원: ${appState.currentStage}단계`)
-      } else {
-        appState.currentStage = 0
-      }
-      
-      // 이름 복원
+      // 이름만 복원 (0단계에서 표시용)
       if (savedName !== null) {
         appState.studentName = savedName
       }
       
-      // 답변 복원
-      if (savedAnswers !== null) {
-        try {
-          appState.answers = JSON.parse(savedAnswers)
-        } catch (e) {
-          console.error('답변 복원 실패:', e)
-        }
-      }
-      
-      // 제안 복원
-      if (savedProposal !== null) {
-        try {
-          appState.proposal = JSON.parse(savedProposal)
-        } catch (e) {
-          console.error('제안 복원 실패:', e)
-        }
-      }
-      
-      // 질문 답변 복원
-      if (savedQuestionAnswers !== null) {
-        try {
-          appState.questionAnswers = JSON.parse(savedQuestionAnswers)
-        } catch (e) {
-          console.error('질문 답변 복원 실패:', e)
-        }
-      }
-      
-      // 투표 복원
-      if (savedVotes !== null) {
-        try {
-          appState.votes = JSON.parse(savedVotes)
-        } catch (e) {
-          console.error('투표 복원 실패:', e)
-        }
-      }
+      // 진행상태는 복원하지 않음 - 무조건 0단계로 시작
+      appState.currentStage = 0
     } else {
       // 모둠 정보가 없으면 무조건 0단계로 시작하고 모든 데이터 초기화
       console.log('모둠 정보가 없어서 0단계로 시작합니다. localStorage를 초기화합니다.')
@@ -3021,18 +3120,20 @@ function loadProgress() {
 async function init() {
   await checkAPIKey()
   
-  // 진행 상태 복원 (모둠 정보 확인 및 데이터 복원)
+  // 진행 상태 복원 (모둠 정보만 확인, 진행상태는 복원하지 않음)
   loadProgress()
   
-  // 모둠 정보가 없으면 무조건 0단계로 표시하고 종료
-  if (!appState.teamId || !appState.memberNumber) {
-    console.log('모둠 정보가 없어서 0단계로 시작합니다.')
-    await renderApp()
-    return
-  }
+  // 페이지 로드 시에는 무조건 0단계로 시작
+  // 진행상태는 0단계에서 모둠/번호를 선택하고 "시작하기"를 눌렀을 때만 복원
+  appState.currentStage = 0
+  console.log('페이지 로드: 무조건 0단계로 시작합니다. 모둠/번호 선택 후 진행상태를 복원합니다.')
+  await renderApp()
   
-  // 모둠 정보가 있고 복원된 단계가 0이 아니면 해당 단계로 이동
-  if (appState.currentStage > 0) {
+  // 진행상태 복원은 0단계에서 "시작하기" 버튼을 눌렀을 때만 수행
+  return
+  
+  // 아래 코드는 사용되지 않음 (참고용)
+  if (false && appState.currentStage > 0) {
     // CSV 데이터가 필요한 단계인 경우 로드
     if (appState.currentStage >= 1 && appState.currentStage <= 4) {
       try {
