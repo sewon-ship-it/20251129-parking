@@ -157,12 +157,25 @@ async function renderCurrentStage() {
   // 모둠 정보가 필요한 단계(1~7)인데 모둠 정보가 없으면 0단계로 리다이렉트
   if (appState.currentStage >= 1 && appState.currentStage <= 7) {
     if (!appState.teamId || !appState.memberNumber) {
-      console.log('모둠 정보가 없어서 0단계로 리다이렉트합니다.')
+      console.log('모둠 정보가 없어서 0단계로 리다이렉트합니다. localStorage를 완전히 초기화합니다.')
       appState.currentStage = 0
-      // localStorage도 초기화
+      appState.teamId = null
+      appState.memberNumber = null
+      appState.studentName = ''
+      appState.answers = {}
+      appState.proposal = { problem: '', solution: '', reason: '' }
+      appState.teamProposal = null
+      appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+      appState.votes = {}
+      // localStorage도 완전히 초기화
       localStorage.removeItem('currentStage')
       localStorage.removeItem('teamId')
       localStorage.removeItem('memberNumber')
+      localStorage.removeItem('studentName')
+      localStorage.removeItem('appStateAnswers')
+      localStorage.removeItem('appStateProposal')
+      localStorage.removeItem('appStateQuestionAnswers')
+      localStorage.removeItem('appStateVotes')
       return renderStage0()
     }
   }
@@ -1703,6 +1716,34 @@ function attachEventListeners() {
     
     startBtn.addEventListener('click', async () => {
       if (appState.teamId && appState.memberNumber) {
+        // 저장된 정보와 현재 입력한 정보 비교 (모둠과 번호만 체크)
+        const savedTeamId = localStorage.getItem('teamId')
+        const savedMemberNumber = localStorage.getItem('memberNumber')
+        
+        const currentTeamId = appState.teamId.toString()
+        const currentMemberNumber = appState.memberNumber.toString()
+        
+        // 저장된 모둠과 번호가 현재 입력한 것과 일치하는지 확인
+        const isSameUser = savedTeamId === currentTeamId && 
+                          savedMemberNumber === currentMemberNumber
+        
+        // 다른 사용자이거나 정보가 변경된 경우 초기화
+        if (!isSameUser && savedTeamId !== null) {
+          console.log('다른 사용자 또는 정보 변경 감지. 초기화합니다.')
+          // 모든 진행상태 초기화
+          appState.currentStage = 0
+          appState.answers = {}
+          appState.proposal = { problem: '', solution: '', reason: '' }
+          appState.teamProposal = null
+          appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+          appState.votes = {}
+          localStorage.removeItem('currentStage')
+          localStorage.removeItem('appStateAnswers')
+          localStorage.removeItem('appStateProposal')
+          localStorage.removeItem('appStateQuestionAnswers')
+          localStorage.removeItem('appStateVotes')
+        }
+        
         // 모둠 정보 저장
         const teamKey = `team${appState.teamId}`
         const memberKey = `${teamKey}-member${appState.memberNumber}`
@@ -1721,22 +1762,48 @@ function attachEventListeners() {
           }
         }
         
-        // 처음부터 시작
-        try {
-          console.log('CSV 파일 로드 시작...')
-          appState.parkingData = await parseCSV('/illegal_parking.csv')
-          console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
-          appState.cctvData = await parseCSV('/cctv.csv')
-          console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
-          appState.currentStage = 1
+        // 같은 사용자이고 진행상태가 있으면 그대로 유지, 아니면 1단계부터 시작
+        if (isSameUser && appState.currentStage > 0) {
+          // 진행상태가 있으면 그대로 유지하고 렌더링
+          console.log('같은 사용자입니다. 진행상태를 복원합니다.')
           saveProgress()
           renderApp()
-          setTimeout(() => {
-            renderCharts()
-          }, 100)
-        } catch (error) {
-          console.error('데이터 로드 실패:', error)
-          alert('데이터를 불러오는데 실패했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
+          // CSV 데이터가 필요한 단계인 경우 로드
+          if (appState.currentStage >= 1 && appState.currentStage <= 4) {
+            try {
+              if (!appState.parkingData) {
+                appState.parkingData = await parseCSV('/illegal_parking.csv')
+              }
+              if (!appState.cctvData) {
+                appState.cctvData = await parseCSV('/cctv.csv')
+              }
+            } catch (error) {
+              console.error('CSV 데이터 로드 실패:', error)
+            }
+          }
+          if (appState.currentStage === 1) {
+            setTimeout(() => {
+              renderCharts()
+            }, 100)
+          }
+        } else {
+          // 처음부터 시작
+          try {
+            console.log('CSV 파일 로드 시작...')
+            appState.parkingData = await parseCSV('/illegal_parking.csv')
+            console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
+            appState.cctvData = await parseCSV('/cctv.csv')
+            console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
+            appState.currentStage = 1
+            saveProgress()
+            renderApp()
+            setTimeout(() => {
+              renderCharts()
+            }, 100)
+          } catch (error) {
+            console.error('데이터 로드 실패:', error)
+            alert('데이터를 불러오는데 실패했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
+          }
         }
       }
     })
@@ -2859,48 +2926,94 @@ function loadProgress() {
     const savedQuestionAnswers = localStorage.getItem('appStateQuestionAnswers')
     const savedVotes = localStorage.getItem('appStateVotes')
     
-    if (savedStage !== null) {
-      appState.currentStage = parseInt(savedStage, 10)
-    }
-    if (savedName !== null) {
-      appState.studentName = savedName
-    }
-    if (savedTeamId !== null && savedTeamId !== '') {
+    // 모둠 정보를 먼저 확인
+    let hasTeamInfo = false
+    if (savedTeamId !== null && savedTeamId !== '' && savedMemberNumber !== null && savedMemberNumber !== '') {
       appState.teamId = parseInt(savedTeamId, 10)
-    }
-    if (savedMemberNumber !== null && savedMemberNumber !== '') {
       appState.memberNumber = parseInt(savedMemberNumber, 10)
+      hasTeamInfo = true
     }
-    if (savedAnswers !== null) {
-      try {
-        appState.answers = JSON.parse(savedAnswers)
-      } catch (e) {
-        console.error('답변 복원 실패:', e)
+    
+    // 모둠 정보가 있을 때만 모든 데이터 복원 (다른 학생이 접속했을 때 방지)
+    if (hasTeamInfo) {
+      console.log(`모둠 정보 확인: ${appState.teamId}모둠 ${appState.memberNumber}번`)
+      
+      // currentStage 복원
+      if (savedStage !== null) {
+        appState.currentStage = parseInt(savedStage, 10)
+        console.log(`진행상태 복원: ${appState.currentStage}단계`)
+      } else {
+        appState.currentStage = 0
       }
-    }
-    if (savedProposal !== null) {
-      try {
-        appState.proposal = JSON.parse(savedProposal)
-      } catch (e) {
-        console.error('제안 복원 실패:', e)
+      
+      // 이름 복원
+      if (savedName !== null) {
+        appState.studentName = savedName
       }
-    }
-    if (savedQuestionAnswers !== null) {
-      try {
-        appState.questionAnswers = JSON.parse(savedQuestionAnswers)
-      } catch (e) {
-        console.error('질문 답변 복원 실패:', e)
+      
+      // 답변 복원
+      if (savedAnswers !== null) {
+        try {
+          appState.answers = JSON.parse(savedAnswers)
+        } catch (e) {
+          console.error('답변 복원 실패:', e)
+        }
       }
-    }
-    if (savedVotes !== null) {
-      try {
-        appState.votes = JSON.parse(savedVotes)
-      } catch (e) {
-        console.error('투표 복원 실패:', e)
+      
+      // 제안 복원
+      if (savedProposal !== null) {
+        try {
+          appState.proposal = JSON.parse(savedProposal)
+        } catch (e) {
+          console.error('제안 복원 실패:', e)
+        }
       }
+      
+      // 질문 답변 복원
+      if (savedQuestionAnswers !== null) {
+        try {
+          appState.questionAnswers = JSON.parse(savedQuestionAnswers)
+        } catch (e) {
+          console.error('질문 답변 복원 실패:', e)
+        }
+      }
+      
+      // 투표 복원
+      if (savedVotes !== null) {
+        try {
+          appState.votes = JSON.parse(savedVotes)
+        } catch (e) {
+          console.error('투표 복원 실패:', e)
+        }
+      }
+    } else {
+      // 모둠 정보가 없으면 무조건 0단계로 시작하고 모든 데이터 초기화
+      console.log('모둠 정보가 없어서 0단계로 시작합니다. localStorage를 초기화합니다.')
+      appState.currentStage = 0
+      appState.teamId = null
+      appState.memberNumber = null
+      appState.studentName = ''
+      appState.answers = {}
+      appState.proposal = { problem: '', solution: '', reason: '' }
+      appState.teamProposal = null
+      appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+      appState.votes = {}
+      // localStorage도 완전히 초기화 (다른 학생이 접속했을 때 이전 데이터가 보이지 않도록)
+      localStorage.removeItem('currentStage')
+      localStorage.removeItem('teamId')
+      localStorage.removeItem('memberNumber')
+      localStorage.removeItem('studentName')
+      localStorage.removeItem('appStateAnswers')
+      localStorage.removeItem('appStateProposal')
+      localStorage.removeItem('appStateQuestionAnswers')
+      localStorage.removeItem('appStateVotes')
     }
   } catch (error) {
     console.error('진행 상태 복원 실패:', error)
+    // 오류 발생 시 초기화
+    appState.currentStage = 0
+    appState.teamId = null
+    appState.memberNumber = null
   }
 }
 
@@ -2908,37 +3021,18 @@ function loadProgress() {
 async function init() {
   await checkAPIKey()
   
-  // 진행 상태 복원
+  // 진행 상태 복원 (모둠 정보 확인 및 데이터 복원)
   loadProgress()
   
-  // 모둠 정보가 없으면 무조건 0단계로 리셋 (새 사용자 또는 다른 브라우저)
+  // 모둠 정보가 없으면 무조건 0단계로 표시하고 종료
   if (!appState.teamId || !appState.memberNumber) {
-    console.log('모둠 정보가 없어서 초기화합니다.')
-    appState.currentStage = 0
-    appState.teamId = null
-    appState.memberNumber = null
-    appState.studentName = ''
-    appState.answers = {}
-    appState.proposal = { problem: '', solution: '', reason: '' }
-    appState.teamProposal = null
-    appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-    appState.votes = {}
-    // localStorage도 완전히 초기화
-    localStorage.removeItem('currentStage')
-    localStorage.removeItem('teamId')
-    localStorage.removeItem('memberNumber')
-    localStorage.removeItem('studentName')
-    localStorage.removeItem('appStateAnswers')
-    localStorage.removeItem('appStateProposal')
-    localStorage.removeItem('appStateQuestionAnswers')
-    localStorage.removeItem('appStateVotes')
-  } else if (appState.currentStage === 0) {
-    // 모둠 정보는 있지만 단계가 0이면 localStorage에서 단계도 초기화
-    localStorage.removeItem('currentStage')
+    console.log('모둠 정보가 없어서 0단계로 시작합니다.')
+    await renderApp()
+    return
   }
   
-  // 복원된 단계가 0이 아니고 모둠 정보가 있으면 해당 단계로 이동
-  if (appState.currentStage > 0 && appState.teamId && appState.memberNumber) {
+  // 모둠 정보가 있고 복원된 단계가 0이 아니면 해당 단계로 이동
+  if (appState.currentStage > 0) {
     // CSV 데이터가 필요한 단계인 경우 로드
     if (appState.currentStage >= 1 && appState.currentStage <= 4) {
       try {
