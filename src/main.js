@@ -603,7 +603,8 @@ async function loadVotesFromFirebase() {
   if (!db) {
     // Firebase가 초기화되지 않았으면 localStorage 사용
     const votes = JSON.parse(localStorage.getItem('votes') || '{}')
-    appState.votes = votes
+    // appState.votes는 현재 사용자의 투표 데이터이므로 덮어쓰지 않음
+    // 전체 투표 데이터만 반환
     return votes
   }
   
@@ -613,14 +614,15 @@ async function loadVotesFromFirebase() {
     
     if (snapshot.exists()) {
       const votesData = snapshot.val()
-      appState.votes = votesData || {}
+      // appState.votes는 현재 사용자의 투표 데이터이므로 덮어쓰지 않음
+      // 전체 투표 데이터만 반환
       return votesData || {}
     }
     return {}
   } catch (error) {
     console.error('투표 불러오기 실패:', error)
     const votes = JSON.parse(localStorage.getItem('votes') || '{}')
-    appState.votes = votes
+    // appState.votes는 현재 사용자의 투표 데이터이므로 덮어쓰지 않음
     return votes
   }
 }
@@ -1989,6 +1991,32 @@ function attachEventListeners() {
           // 진행 상태가 있으면 해당 단계로 복원
           console.log(`${appState.teamId}모둠 ${appState.memberNumber}번의 진행 상태 복원: ${appState.currentStage}단계`)
           
+          // 투표 재개 상태이고 제안 데이터가 없으면 진행 상태 초기화 (새로 시작)
+          if (votingStatus === 'open') {
+            try {
+              const proposals = await loadProposalsFromFirebase()
+              if (proposals.length === 0 && appState.currentStage >= 5) {
+                // 제안 데이터가 없고 5단계 이상이면 초기화 (데이터가 지워진 상태)
+                console.log('제안 데이터가 없고 투표 재개 상태입니다. 진행 상태를 초기화합니다.')
+                appState.currentStage = 1
+                appState.answers = {}
+                appState.proposal = { problem: '', solution: '', reason: '' }
+                appState.teamProposal = null
+                appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+                appState.votes = {}
+                // 진행 상태 초기화 후 새로 시작하도록 처리
+                saveProgress() // 초기화된 상태 저장
+                await renderApp()
+                setTimeout(() => {
+                  renderCharts()
+                }, 100)
+                return // 여기서 종료하여 새로 시작 처리
+              }
+            } catch (error) {
+              console.error('제안 데이터 확인 실패:', error)
+            }
+          }
+          
           // 투표가 종료되었고 5단계 이상 완료했다면 6단계로 자동 전환
           if (votingStatus === 'closed' && appState.currentStage >= 5) {
             console.log('투표가 종료되었습니다. 5단계 이상 완료한 학생을 6단계로 자동 전환합니다.')
@@ -3288,8 +3316,9 @@ async function submitVotes() {
     
     await set(allVotesRef, updatedVotes)
     
-    // 로컬 상태 업데이트
-    appState.votes = updatedVotes
+    // appState.votes는 원래 형태 유지 (다른 단계에서 사용할 수 있도록)
+    // updatedVotes는 { [teamName]: { [proposalIndex]: {...} } } 형태이므로
+    // appState.votes는 그대로 유지 (이미 { [proposalIndex]: {...} } 형태)
     
     alert('투표가 완료되었습니다!')
     appState.currentStage = 6
