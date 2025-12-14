@@ -526,9 +526,7 @@ function renderStage4() {
         </div>
         
         ${teamProposal.combinedText ? `
-          ${!teamProposal.aiFeedback ? `
-          <button class="btn" id="get-feedback-btn" style="margin-top: 20px;">AI 피드백 받기</button>
-          ` : ''}
+          <button class="btn ${teamProposal.aiFeedback ? 'hidden' : ''}" id="get-feedback-btn" style="margin-top: 20px; ${teamProposal.aiFeedback ? 'display: none;' : 'display: block;'}">AI 피드백 받기</button>
           <div id="ai-feedback-container" class="${teamProposal.aiFeedback ? 'question-card' : 'hidden'}" style="margin-top: 20px;">
           ${teamProposal.aiFeedback ? `
               <div class="ai-feedback">
@@ -982,13 +980,59 @@ function updateTeamProposalUI(teamProposal) {
   }
   if (combinedText && teamProposal.combinedText) {
     combinedText.textContent = teamProposal.combinedText
-    document.getElementById('combined-proposal')?.classList.remove('hidden')
+    const combinedProposalDiv = document.getElementById('combined-proposal')
+    if (combinedProposalDiv) {
+      combinedProposalDiv.classList.remove('hidden')
+    }
+  }
+  
+  // combinedText가 있으면 항상 버튼 처리
+  if (teamProposal.combinedText) {
+    const combinedProposalDiv = document.getElementById('combined-proposal')
+    if (combinedProposalDiv) {
+      combinedProposalDiv.classList.remove('hidden')
+    }
     
-    // combinedText가 있지만 aiFeedback이 없으면 AI 피드백 받기 버튼 표시
+    // AI 피드백 받기 버튼 처리
+    let getFeedbackBtn = document.getElementById('get-feedback-btn')
+    
     if (!teamProposal.aiFeedback) {
-      const getFeedbackBtn = document.getElementById('get-feedback-btn')
+      // aiFeedback이 없으면 버튼 표시
+      if (!getFeedbackBtn) {
+        // 버튼이 없으면 생성
+        const buttonContainer = document.createElement('div')
+        buttonContainer.innerHTML = `<button class="btn" id="get-feedback-btn" style="margin-top: 20px;">AI 피드백 받기</button>`
+        const combinedProposalContainer = document.getElementById('combined-proposal')
+        if (combinedProposalContainer) {
+          // speech-container 다음에 버튼 삽입
+          const speechContainer = combinedProposalContainer.querySelector('.speech-container')
+          if (speechContainer && speechContainer.nextSibling) {
+            combinedProposalContainer.insertBefore(buttonContainer.firstElementChild, speechContainer.nextSibling)
+          } else {
+            combinedProposalContainer.appendChild(buttonContainer.firstElementChild)
+          }
+          getFeedbackBtn = document.getElementById('get-feedback-btn')
+          
+          // 이벤트 리스너 추가
+          if (getFeedbackBtn) {
+            getFeedbackBtn.addEventListener('click', async () => {
+              await getAIFeedback()
+            })
+          }
+        }
+      }
+      
+      // 버튼 표시
       if (getFeedbackBtn) {
         getFeedbackBtn.style.display = 'block'
+        getFeedbackBtn.style.visibility = 'visible'
+        getFeedbackBtn.classList.remove('hidden')
+      }
+    } else {
+      // aiFeedback이 있으면 버튼 숨기기
+      if (getFeedbackBtn) {
+        getFeedbackBtn.style.display = 'none'
+        getFeedbackBtn.classList.add('hidden')
       }
     }
   }
@@ -1017,12 +1061,26 @@ function updateTeamProposalUI(teamProposal) {
     const getFeedbackBtn = document.getElementById('get-feedback-btn')
     if (getFeedbackBtn) {
       getFeedbackBtn.style.display = 'none'
+      getFeedbackBtn.style.visibility = 'hidden'
+      getFeedbackBtn.classList.add('hidden')
     }
     
-    // 다음 단계 버튼 표시
+    // 다음 단계 버튼 표시 (강제로 표시)
     const nextStageBtn = document.getElementById('next-stage-btn')
     if (nextStageBtn) {
       nextStageBtn.classList.remove('hidden')
+      nextStageBtn.style.display = 'block'
+      nextStageBtn.style.visibility = 'visible'
+    } else {
+      // 버튼이 없으면 잠시 후 다시 시도
+      setTimeout(() => {
+        const retryNextBtn = document.getElementById('next-stage-btn')
+        if (retryNextBtn && teamProposal.aiFeedback) {
+          retryNextBtn.classList.remove('hidden')
+          retryNextBtn.style.display = 'block'
+          retryNextBtn.style.visibility = 'visible'
+        }
+      }, 100)
     }
   }
 }
@@ -1175,13 +1233,24 @@ function setupRealtimeUpdates() {
     localStorage.setItem('votingStatus', votingStatus)
     
     if (appState.currentStage === 5 || appState.currentStage === 6) {
-      await renderApp()
-      attachEventListeners()
-      
-      if (votingStatus === 'closed' && appState.currentStage === 6) {
+      // 투표가 종료되었고 현재 5단계에 있으면 6단계로 자동 전환
+      if (votingStatus === 'closed' && appState.currentStage === 5) {
+        appState.currentStage = 6
+        saveProgress()
+        await renderApp()
+        attachEventListeners()
         setTimeout(() => {
           generateSpeech()
         }, 500)
+      } else {
+        await renderApp()
+        attachEventListeners()
+        
+        if (votingStatus === 'closed' && appState.currentStage === 6) {
+          setTimeout(() => {
+            generateSpeech()
+          }, 500)
+        }
       }
     }
   }, (error) => {
@@ -1274,7 +1343,7 @@ async function renderStage6() {
             교사님이 투표를 종료하고 최종 결과를 확정합니다.
           </p>
           <p style="color: var(--winter-blue-700); font-size: 1em; margin-top: 20px; font-weight: 600;">
-            📊 현재까지 ${Object.keys(voteResults).length}명이 투표했습니다
+            📊 현재까지 ${Object.keys(voteResults).length}팀이 투표했습니다
           </p>
           <p style="color: var(--winter-blue-600); font-size: 0.9em; margin-top: 10px;">
             투표 종료 후 1등 해결방안을 확인할 수 있습니다!
@@ -1945,20 +2014,33 @@ function attachEventListeners() {
             }
           }
           
+          // 투표가 종료되었고 5단계까지 완료했다면 6단계로 자동 전환
+          const votingStatus = await getVotingStatus()
+          if (votingStatus === 'closed' && appState.currentStage === 5) {
+            console.log('투표가 종료되었습니다. 6단계로 자동 전환합니다.')
+            appState.currentStage = 6
+          }
+          
           saveProgress() // 현재 사용자 정보 저장
           await renderApp()
           
           // 복원된 단계에 따라 추가 작업 수행
           if (appState.currentStage === 1 || appState.currentStage === 2) {
+            // renderCharts는 비동기이므로 약간의 지연 필요
             setTimeout(() => {
               renderCharts()
-              restoreQuestionAnswers()
-              if (appState.currentStage === 1) {
-                checkStage1Complete()
-              } else if (appState.currentStage === 2) {
-                checkStage2Complete()
-              }
             }, 100)
+            // 답변 복원과 완료 확인은 renderApp() 후 즉시 수행 (DOM이 준비된 후)
+            // await renderApp() 후이므로 DOM은 이미 준비되어 있음
+            restoreQuestionAnswers()
+            if (appState.currentStage === 1) {
+              checkStage1Complete()
+            } else if (appState.currentStage === 2) {
+              checkStage2Complete()
+            }
+          } else if (appState.currentStage === 3) {
+            // 3단계 완료 상태 확인
+            checkStage3Complete()
           } else if (appState.currentStage === 4) {
             setTimeout(() => {
               setupTeamProposalRealtimeSync()
@@ -2212,19 +2294,21 @@ function attachEventListeners() {
         await renderApp()
         
         if (appState.currentStage === 1) {
+          // renderCharts는 비동기이므로 약간의 지연 필요
           setTimeout(() => {
             renderCharts()
-            // 저장된 답변 복원
-            restoreQuestionAnswers()
-            // 1단계 완료 상태 확인
-            checkStage1Complete()
           }, 100)
+          // 저장된 답변 복원과 완료 확인은 renderApp() 후 즉시 수행 (DOM이 준비된 후)
+          restoreQuestionAnswers()
+          checkStage1Complete()
         } else if (appState.currentStage === 2) {
           setTimeout(() => {
             renderCharts()
-            restoreQuestionAnswers()
-            checkStage2Complete()
           }, 100)
+          restoreQuestionAnswers()
+          checkStage2Complete()
+        } else if (appState.currentStage === 3) {
+          checkStage3Complete()
         }
       }
     })
@@ -2275,10 +2359,16 @@ function attachEventListeners() {
   // 3단계: 주요 원인 선택
   const mainCause = document.getElementById('main-cause')
   if (mainCause) {
+    // 저장된 값 복원
+    if (appState.answers.mainCause) {
+      mainCause.value = appState.answers.mainCause
+      checkStage3Complete()
+    }
+    
     mainCause.addEventListener('change', () => {
       appState.answers.mainCause = mainCause.value
       saveProgress() // 진행 상태 저장
-      document.getElementById('next-stage-btn').disabled = !mainCause.value
+      checkStage3Complete()
     })
   }
   
@@ -2657,6 +2747,15 @@ function checkStage2Complete() {
   }
 }
 
+// 단계 3 완료 확인
+function checkStage3Complete() {
+  const btn = document.getElementById('next-stage-btn')
+  if (btn && appState.currentStage === 3) {
+    const hasMainCause = appState.answers.mainCause && appState.answers.mainCause.length > 0
+    btn.disabled = !hasMainCause
+  }
+}
+
 // 예상 이유 검증 함수
 function validatePredictionReason() {
   const selectedAnswer = appState.answers.question1 || appState.questionAnswers.question1
@@ -2717,6 +2816,11 @@ function validatePredictionReason() {
 function restoreQuestionAnswers() {
   // 1단계 질문 복원
   if (appState.questionAnswers.question1) {
+    // answers에도 복원 (checkStage1Complete에서 확인)
+    if (!appState.answers.question1) {
+      appState.answers.question1 = appState.questionAnswers.question1
+    }
+    
     const q1Options = document.querySelectorAll('.stage1-q1, .stage2-q1')
     q1Options.forEach(opt => {
       if (opt.dataset.answer === appState.questionAnswers.question1) {
@@ -2742,13 +2846,18 @@ function restoreQuestionAnswers() {
     if (predictionReasonEl) {
       predictionReasonEl.value = appState.answers.predictionReason
       // 복원 후 검증
-      if (appState.answers.question1) {
+      if (appState.answers.question1 || appState.questionAnswers.question1) {
         validatePredictionReason()
       }
     }
   }
   
   if (appState.questionAnswers.question2) {
+    // answers에도 복원 (checkStage1Complete에서 확인)
+    if (!appState.answers.question2) {
+      appState.answers.question2 = appState.questionAnswers.question2
+    }
+    
     const q2Options = document.querySelectorAll('.stage1-q2, .stage2-q2')
     q2Options.forEach(opt => {
       if (opt.dataset.answer === appState.questionAnswers.question2) {
@@ -2771,6 +2880,16 @@ function restoreQuestionAnswers() {
       q2Feedback.innerHTML = appState.questionAnswers.question2Correct
         ? '<span style="color: #4caf50;">✓ 정답입니다! 11월에 가장 많은 민원이 발생했습니다.</span>'
         : '<span style="color: #f44336;">✗ 틀렸습니다. 정답은 11월입니다.</span>'
+    }
+  }
+  
+  // letterProblem도 복원
+  if (appState.answers.letterProblem && appState.answers.letterProblem !== '여기에 드래그하세요') {
+    const letterAnswerBox = document.getElementById('letter-problem-answer')
+    if (letterAnswerBox) {
+      letterAnswerBox.textContent = appState.answers.letterProblem
+      letterAnswerBox.style.borderColor = 'var(--winter-blue-500)'
+      letterAnswerBox.style.backgroundColor = 'var(--winter-blue-50)'
     }
   }
 }
@@ -2807,9 +2926,6 @@ async function combineTeamProposal() {
   try {
     const combinedText = await callOpenAI(prompt, '당신은 초등학교 4학년 학생의 글을 도와주는 친절한 선생님입니다.')
     
-    document.getElementById('combined-text').textContent = combinedText
-    document.getElementById('combined-proposal').classList.remove('hidden')
-    
     // 모둠 제안에 저장
     if (!appState.teamProposal) {
       appState.teamProposal = {}
@@ -2822,6 +2938,92 @@ async function combineTeamProposal() {
       const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
       await update(teamProposalRef, { combinedText })
     }
+    
+    // DOM 즉시 업데이트
+    const combinedTextEl = document.getElementById('combined-text')
+    const combinedProposalDiv = document.getElementById('combined-proposal')
+    if (combinedTextEl) {
+      combinedTextEl.textContent = combinedText
+    }
+    if (combinedProposalDiv) {
+      combinedProposalDiv.classList.remove('hidden')
+    }
+    
+    // AI 피드백 받기 버튼 항상 생성 및 표시 (aiFeedback이 없을 때만)
+    // 버튼이 이미 DOM에 있는지 확인
+    let getFeedbackBtn = document.getElementById('get-feedback-btn')
+    
+    if (!getFeedbackBtn) {
+      // 버튼이 없으면 생성
+      const combinedProposalContainer = document.getElementById('combined-proposal')
+      if (combinedProposalContainer) {
+        // speech-container 다음에 버튼 삽입
+        const speechContainer = combinedProposalContainer.querySelector('.speech-container')
+        const buttonDiv = document.createElement('div')
+        buttonDiv.style.marginTop = '20px'
+        buttonDiv.innerHTML = `<button class="btn" id="get-feedback-btn">AI 피드백 받기</button>`
+        
+        if (speechContainer) {
+          // speech-container 다음에 삽입
+          if (speechContainer.nextSibling) {
+            combinedProposalContainer.insertBefore(buttonDiv, speechContainer.nextSibling)
+          } else {
+            combinedProposalContainer.appendChild(buttonDiv)
+          }
+        } else {
+          combinedProposalContainer.appendChild(buttonDiv)
+        }
+        
+        getFeedbackBtn = document.getElementById('get-feedback-btn')
+        
+        // 이벤트 리스너 추가
+        if (getFeedbackBtn) {
+          getFeedbackBtn.addEventListener('click', async () => {
+            await getAIFeedback()
+          })
+        }
+      }
+    }
+    
+    // aiFeedback이 없으면 버튼 표시, 있으면 숨김
+    if (getFeedbackBtn) {
+      if (!appState.teamProposal.aiFeedback) {
+        getFeedbackBtn.style.display = 'block'
+        getFeedbackBtn.style.visibility = 'visible'
+        getFeedbackBtn.classList.remove('hidden')
+        getFeedbackBtn.disabled = false
+      } else {
+        getFeedbackBtn.style.display = 'none'
+        getFeedbackBtn.style.visibility = 'hidden'
+        getFeedbackBtn.classList.add('hidden')
+      }
+    } else {
+      // 버튼 생성 실패 시 재시도
+      console.warn('AI 피드백 받기 버튼 생성 실패, 재시도합니다.')
+      setTimeout(() => {
+        const retryBtn = document.getElementById('get-feedback-btn')
+        if (!retryBtn && appState.teamProposal.combinedText && !appState.teamProposal.aiFeedback) {
+          const combinedProposalContainer = document.getElementById('combined-proposal')
+          if (combinedProposalContainer) {
+            const buttonDiv = document.createElement('div')
+            buttonDiv.style.marginTop = '20px'
+            buttonDiv.innerHTML = `<button class="btn" id="get-feedback-btn">AI 피드백 받기</button>`
+            combinedProposalContainer.appendChild(buttonDiv)
+            const newBtn = document.getElementById('get-feedback-btn')
+            if (newBtn) {
+              newBtn.addEventListener('click', async () => {
+                await getAIFeedback()
+              })
+              newBtn.style.display = 'block'
+              newBtn.style.visibility = 'visible'
+            }
+          }
+        }
+      }, 200)
+    }
+    
+    // UI 업데이트 (다른 멤버의 변경사항도 반영)
+    updateTeamProposalUI(appState.teamProposal)
     
     // 전체 제안 목록에도 저장 (5단계 투표용)
     const teamName = `${appState.teamId}모둠`
@@ -2945,16 +3147,33 @@ async function getAIFeedback() {
       }
     }
     
-    // 다음 단계 버튼 표시
-    const nextStageBtn = document.getElementById('next-stage-btn')
-    if (nextStageBtn) {
-      nextStageBtn.classList.remove('hidden')
-    }
-    
     // AI 피드백 받기 버튼 숨기기
     if (feedbackBtn) {
       feedbackBtn.style.display = 'none'
+      feedbackBtn.style.visibility = 'hidden'
+      feedbackBtn.classList.add('hidden')
     }
+    
+    // 다음 단계 버튼 표시 (강제로 표시)
+    const nextStageBtn = document.getElementById('next-stage-btn')
+    if (nextStageBtn) {
+      nextStageBtn.classList.remove('hidden')
+      nextStageBtn.style.display = 'block'
+      nextStageBtn.style.visibility = 'visible'
+    } else {
+      // 버튼이 없으면 잠시 후 다시 시도
+      setTimeout(() => {
+        const retryNextBtn = document.getElementById('next-stage-btn')
+        if (retryNextBtn && appState.teamProposal.aiFeedback) {
+          retryNextBtn.classList.remove('hidden')
+          retryNextBtn.style.display = 'block'
+          retryNextBtn.style.visibility = 'visible'
+        }
+      }, 100)
+    }
+    
+    // updateTeamProposalUI도 호출하여 UI 동기화
+    updateTeamProposalUI(appState.teamProposal)
   } catch (error) {
     if (feedbackContainer) {
       feedbackContainer.innerHTML = `<p style="color: red;">피드백 생성 중 오류가 발생했습니다: ${error.message}</p>`
