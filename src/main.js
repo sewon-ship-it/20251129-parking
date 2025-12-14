@@ -737,7 +737,10 @@ async function saveDeletedProposal(studentName) {
 // 5단계: 동료 평가/투표
 async function renderStage5() {
   // Firebase에서 모든 제안 불러오기
-  const proposals = await loadProposalsFromFirebase()
+  const allProposals = await loadProposalsFromFirebase()
+  
+  // 본인 모둠의 제안 제외 (자기 자신에게 투표할 수 없음)
+  const proposals = allProposals.filter(p => p.teamId !== appState.teamId)
   
   // 투표 상태 확인
   const votingStatus = await getVotingStatus()
@@ -783,10 +786,13 @@ async function renderStage5() {
       `}
       
       <div id="voting-section">
-        ${proposals.map((proposal, index) => `
+        ${proposals.map((proposal, displayIndex) => {
+          // allProposals에서의 실제 인덱스 찾기 (투표 저장 시 올바른 인덱스 사용)
+          const actualIndex = allProposals.findIndex(p => p.id === proposal.id)
+          return `
           <div class="question-card" style="margin-bottom: 30px;">
             <h3 style="color: var(--winter-blue-700); margin-bottom: 15px;">
-              제안 ${index + 1}: ${proposal.name}의 해결방안
+              제안 ${displayIndex + 1}: ${proposal.name}의 해결방안
             </h3>
             <div style="background: var(--winter-ice); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
               <p style="line-height: 1.8; font-size: 1.05em;">${proposal.combinedText || proposal.text}</p>
@@ -807,28 +813,28 @@ async function renderStage5() {
                   <td><strong>${proposal.name}</strong>${proposal.teamId ? ` (${proposal.teamId}모둠)` : ''}</td>
                   <td>
                     ${[1, 2, 3, 4, 5].map(score => `
-                      <button class="rating-btn" data-proposal="${index}" 
+                      <button class="rating-btn" data-proposal="${actualIndex}" 
                               data-criteria="effect" data-score="${score}" 
                               ${isVotingClosed ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>${score}</button>
                     `).join('')}
                   </td>
                   <td>
                     ${[1, 2, 3, 4, 5].map(score => `
-                      <button class="rating-btn" data-proposal="${index}" 
+                      <button class="rating-btn" data-proposal="${actualIndex}" 
                               data-criteria="cost" data-score="${score}" 
                               ${isVotingClosed ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>${score}</button>
                     `).join('')}
                   </td>
                   <td>
                     ${[1, 2, 3, 4, 5].map(score => `
-                      <button class="rating-btn" data-proposal="${index}" 
+                      <button class="rating-btn" data-proposal="${actualIndex}" 
                               data-criteria="practical" data-score="${score}" 
                               ${isVotingClosed ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>${score}</button>
                     `).join('')}
                   </td>
                   <td>
                     ${[1, 2, 3, 4, 5].map(score => `
-                      <button class="rating-btn" data-proposal="${index}" 
+                      <button class="rating-btn" data-proposal="${actualIndex}" 
                               data-criteria="harmless" data-score="${score}" 
                               ${isVotingClosed ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>${score}</button>
                     `).join('')}
@@ -837,7 +843,7 @@ async function renderStage5() {
               </tbody>
             </table>
           </div>
-        `).join('')}
+        `}).join('')}
       </div>
       
       <div style="display: flex; gap: 10px; margin-top: 20px;">
@@ -1835,6 +1841,15 @@ async function deleteProposal(proposalId, studentName) {
     const proposalRef = ref(db, `proposals/${proposalId}`)
     await set(proposalRef, null)
     
+    // 해당 모둠의 teamProposal 데이터도 삭제 (4단계 데이터 초기화)
+    const deletedProposal = allProposals.find(p => p.id === proposalId)
+    if (deletedProposal && deletedProposal.teamId) {
+      const teamKey = `team${deletedProposal.teamId}`
+      const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+      await set(teamProposalRef, null)
+      console.log(`${teamKey}의 모둠 제안 데이터도 삭제했습니다.`)
+    }
+    
     // Firebase에서 투표 데이터 업데이트
     const votesRef = ref(db, 'votes/all')
     await set(votesRef, updatedVotes)
@@ -2014,22 +2029,36 @@ function attachEventListeners() {
                                   (teamSnapshot.val().problem || teamSnapshot.val().solution || teamSnapshot.val().reason)
               }
               
-              // 제안 데이터와 모둠 제안 데이터가 모두 없고 5단계 이상이면 초기화 (데이터가 완전히 지워진 상태)
-              if (proposals.length === 0 && !hasTeamProposal && appState.currentStage >= 5) {
-                console.log('제안 데이터와 모둠 제안 데이터가 모두 없고 투표 재개 상태입니다. 진행 상태를 초기화합니다.')
-                appState.currentStage = 1
-                appState.answers = {}
-                appState.proposal = { problem: '', solution: '', reason: '' }
-                appState.teamProposal = null
-                appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-                appState.votes = {}
-                // 진행 상태 초기화 후 새로 시작하도록 처리
-                saveProgress() // 초기화된 상태 저장
-                await renderApp()
-                setTimeout(() => {
-                  renderCharts()
-                }, 100)
-                return // 여기서 종료하여 새로 시작 처리
+              // 제안 데이터가 없고 4단계 이상이면 모둠 제안 데이터도 초기화
+              if (proposals.length === 0 && appState.currentStage >= 4) {
+                if (hasTeamProposal) {
+                  // 모둠 제안 데이터가 있으면 삭제
+                  if (db && appState.teamId) {
+                    const teamKey = `team${appState.teamId}`
+                    const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+                    await set(teamProposalRef, null)
+                    console.log(`${teamKey}의 모둠 제안 데이터를 삭제했습니다.`)
+                  }
+                  appState.teamProposal = null
+                }
+                
+                // 4단계 이상이면 완전히 초기화 (제안 데이터가 없으면 처음부터 다시 시작)
+                if (appState.currentStage >= 4) {
+                  console.log('제안 데이터가 없고 투표 재개 상태입니다. 진행 상태를 초기화하여 1단계부터 다시 시작합니다.')
+                  appState.currentStage = 1
+                  appState.answers = {}
+                  appState.proposal = { problem: '', solution: '', reason: '' }
+                  appState.teamProposal = null
+                  appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+                  appState.votes = {}
+                  // 진행 상태 초기화 후 새로 시작하도록 처리
+                  saveProgress() // 초기화된 상태 저장
+                  await renderApp()
+                  setTimeout(() => {
+                    renderCharts()
+                  }, 100)
+                  return // 여기서 종료하여 새로 시작 처리
+                }
               }
             } catch (error) {
               console.error('제안 데이터 확인 실패:', error)
