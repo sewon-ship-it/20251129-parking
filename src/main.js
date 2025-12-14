@@ -183,10 +183,40 @@ async function renderCurrentStage() {
           const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
           const snapshot = await get(teamProposalRef)
           if (snapshot.exists()) {
-            appState.teamProposal = snapshot.val()
+            const teamProposalData = snapshot.val()
+            // 데이터가 실제로 있는지 확인 (빈 객체가 아닌지)
+            if (teamProposalData && (teamProposalData.problem || teamProposalData.solution || teamProposalData.reason)) {
+              appState.teamProposal = teamProposalData
+            } else {
+              // 빈 데이터면 초기화
+              appState.teamProposal = {
+                problem: '',
+                solution: '',
+                reason: '',
+                combinedText: '',
+                aiFeedback: ''
+              }
+            }
+          } else {
+            // 데이터가 없으면 초기화
+            appState.teamProposal = {
+              problem: '',
+              solution: '',
+              reason: '',
+              combinedText: '',
+              aiFeedback: ''
+            }
           }
         } catch (error) {
           console.error('4단계 teamProposal 초기 로드 실패:', error)
+          // 오류 발생 시 초기화
+          appState.teamProposal = {
+            problem: '',
+            solution: '',
+            reason: '',
+            combinedText: '',
+            aiFeedback: ''
+          }
         }
       }
       return renderStage4()
@@ -1906,23 +1936,16 @@ async function clearAllData() {
     await set(deletedProposalsRef, null)
     
     // 모든 모둠의 teamProposal 데이터도 삭제 (4단계 데이터 초기화)
-    const teamsRef = ref(db, 'teams')
-    const teamsSnapshot = await get(teamsRef)
-    if (teamsSnapshot.exists()) {
-      const teamsData = teamsSnapshot.val()
-      const deletePromises = []
-      
-      // 모든 모둠의 proposal 데이터 삭제
-      Object.keys(teamsData).forEach(teamKey => {
-        if (teamsData[teamKey] && teamsData[teamKey].proposal) {
-          const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
-          deletePromises.push(set(teamProposalRef, null))
-        }
-      })
-      
-      await Promise.all(deletePromises)
-      console.log(`모든 모둠의 제안 데이터(${deletePromises.length}개)를 삭제했습니다.`)
+    // 1~10모둠까지 모든 가능한 모둠의 proposal 데이터 삭제
+    const deletePromises = []
+    for (let teamNum = 1; teamNum <= 10; teamNum++) {
+      const teamKey = `team${teamNum}`
+      const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+      deletePromises.push(set(teamProposalRef, null))
     }
+    
+    await Promise.all(deletePromises)
+    console.log(`모든 모둠(1~10)의 제안 데이터를 삭제했습니다.`)
     
     // 로컬 상태도 초기화
     appState.allProposals = []
