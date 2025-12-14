@@ -1214,12 +1214,21 @@ function setupRealtimeUpdates() {
         ...proposalsData[key]
       }))
       
+      appState.allProposals = proposals
+      
+      // 5단계에 있으면 실시간으로 화면 업데이트
       if (appState.currentStage === 5) {
-        appState.allProposals = proposals
         renderApp()
         attachEventListeners()
-      } else {
-        appState.allProposals = proposals
+      }
+    } else {
+      // 제안 데이터가 없으면 빈 배열로 설정
+      appState.allProposals = []
+      
+      // 5단계에 있으면 실시간으로 화면 업데이트
+      if (appState.currentStage === 5) {
+        renderApp()
+        attachEventListeners()
       }
     }
   }, (error) => {
@@ -1995,9 +2004,19 @@ function attachEventListeners() {
           if (votingStatus === 'open') {
             try {
               const proposals = await loadProposalsFromFirebase()
-              if (proposals.length === 0 && appState.currentStage >= 5) {
-                // 제안 데이터가 없고 5단계 이상이면 초기화 (데이터가 지워진 상태)
-                console.log('제안 데이터가 없고 투표 재개 상태입니다. 진행 상태를 초기화합니다.')
+              // 모둠 제안 데이터도 확인
+              let hasTeamProposal = false
+              if (db && appState.teamId) {
+                const teamKey = `team${appState.teamId}`
+                const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+                const teamSnapshot = await get(teamProposalRef)
+                hasTeamProposal = teamSnapshot.exists() && teamSnapshot.val() && 
+                                  (teamSnapshot.val().problem || teamSnapshot.val().solution || teamSnapshot.val().reason)
+              }
+              
+              // 제안 데이터와 모둠 제안 데이터가 모두 없고 5단계 이상이면 초기화 (데이터가 완전히 지워진 상태)
+              if (proposals.length === 0 && !hasTeamProposal && appState.currentStage >= 5) {
+                console.log('제안 데이터와 모둠 제안 데이터가 모두 없고 투표 재개 상태입니다. 진행 상태를 초기화합니다.')
                 appState.currentStage = 1
                 appState.answers = {}
                 appState.proposal = { problem: '', solution: '', reason: '' }
@@ -2045,7 +2064,29 @@ function attachEventListeners() {
                 const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
                 const snapshot = await get(teamProposalRef)
                 if (snapshot.exists()) {
-                  appState.teamProposal = snapshot.val()
+                  const teamProposalData = snapshot.val()
+                  // 데이터가 실제로 있는지 확인 (빈 객체가 아닌지)
+                  if (teamProposalData && (teamProposalData.problem || teamProposalData.solution || teamProposalData.reason)) {
+                    appState.teamProposal = teamProposalData
+                  } else {
+                    // 빈 데이터면 초기화
+                    appState.teamProposal = {
+                      problem: '',
+                      solution: '',
+                      reason: '',
+                      combinedText: '',
+                      aiFeedback: ''
+                    }
+                  }
+                } else {
+                  // 데이터가 없으면 초기화
+                  appState.teamProposal = {
+                    problem: '',
+                    solution: '',
+                    reason: '',
+                    combinedText: '',
+                    aiFeedback: ''
+                  }
                 }
               }
             } catch (error) {
