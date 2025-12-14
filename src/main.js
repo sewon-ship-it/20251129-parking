@@ -1031,6 +1031,13 @@ async function setupTeamProposalRealtimeSync() {
 }
 
 // 모둠 제안 UI 업데이트 (다른 멤버의 입력 반영)
+// 입력 필드가 포커스를 받고 있거나 최근에 변경되었으면 업데이트하지 않음 (사용자 입력 보호)
+const lastInputTime = {
+  problem: 0,
+  solution: 0,
+  reason: 0
+}
+
 function updateTeamProposalUI(teamProposal) {
   if (!teamProposal) {
     return // teamProposal이 없으면 업데이트하지 않음
@@ -1041,14 +1048,34 @@ function updateTeamProposalUI(teamProposal) {
   const reasonInput = document.getElementById('proposal-reason')
   const combinedText = document.getElementById('combined-text')
   
+  const now = Date.now()
+  const INPUT_PROTECTION_TIME = 2000 // 2초 이내에 입력했으면 보호
+  
+  // problem 필드 업데이트 (포커스 중이거나 최근 입력이면 건너뛰기)
   if (problemInput && problemInput.value !== teamProposal.problem) {
-    problemInput.value = teamProposal.problem || ''
+    const isFocused = document.activeElement === problemInput
+    const recentlyChanged = (now - lastInputTime.problem) < INPUT_PROTECTION_TIME
+    if (!isFocused && !recentlyChanged) {
+      problemInput.value = teamProposal.problem || ''
+    }
   }
+  
+  // solution 필드 업데이트
   if (solutionInput && solutionInput.value !== teamProposal.solution) {
-    solutionInput.value = teamProposal.solution || ''
+    const isFocused = document.activeElement === solutionInput
+    const recentlyChanged = (now - lastInputTime.solution) < INPUT_PROTECTION_TIME
+    if (!isFocused && !recentlyChanged) {
+      solutionInput.value = teamProposal.solution || ''
+    }
   }
+  
+  // reason 필드 업데이트
   if (reasonInput && reasonInput.value !== teamProposal.reason) {
-    reasonInput.value = teamProposal.reason || ''
+    const isFocused = document.activeElement === reasonInput
+    const recentlyChanged = (now - lastInputTime.reason) < INPUT_PROTECTION_TIME
+    if (!isFocused && !recentlyChanged) {
+      reasonInput.value = teamProposal.reason || ''
+    }
   }
   if (combinedText && teamProposal.combinedText) {
     combinedText.textContent = teamProposal.combinedText
@@ -1209,7 +1236,27 @@ async function saveTeamProposal(field, value) {
   clearTimeout(saveTimeout)
   saveTimeout = setTimeout(async () => {
     try {
-      await update(teamProposalRef, { [field]: value })
+      // 저장하기 전에 Firebase에서 최신 데이터를 가져와서 병합 (기존 데이터 보존)
+      const snapshot = await get(teamProposalRef)
+      const existingData = snapshot.exists() ? snapshot.val() : {
+        problem: '',
+        solution: '',
+        reason: '',
+        combinedText: '',
+        aiFeedback: ''
+      }
+      
+      // 기존 데이터와 현재 입력값 병합 (현재 입력값이 우선, 하지만 다른 필드는 보존)
+      const mergedData = {
+        ...existingData,
+        [field]: value
+      }
+      
+      // 병합된 데이터로 업데이트
+      await update(teamProposalRef, mergedData)
+      
+      // appState도 업데이트 (다른 필드도 보존)
+      appState.teamProposal = mergedData
     } catch (error) {
       console.error('모둠 제안 저장 실패:', error)
     }
@@ -2120,8 +2167,8 @@ function attachEventListeners() {
       if (hasProgress && appState.currentStage > 0 && appState.currentStage <= 3) {
         // 1~3단계는 개별 진행 상태 복원
         console.log(`${appState.teamId}모둠 (세션: ${appState.sessionId})의 개별 진행 상태 복원: ${appState.currentStage}단계`)
-      } else if (hasProgress && appState.currentStage >= 4) {
-        // 4단계 이후는 모둠별 공유이므로 Firebase에서 확인
+      } else if (hasProgress && appState.currentStage === 4) {
+        // 4단계는 모둠별 공유이므로 Firebase에서 teamProposal 확인
         console.log(`${appState.teamId}모둠의 모둠 진행 상태 복원: ${appState.currentStage}단계`)
         
         // Firebase에서 teamProposal 확인
@@ -2134,9 +2181,28 @@ function attachEventListeners() {
               const teamProposalData = teamSnapshot.val()
               if (teamProposalData && (teamProposalData.problem || teamProposalData.solution || teamProposalData.reason || teamProposalData.combinedText)) {
                 appState.teamProposal = teamProposalData
-                // 4단계로 설정 (모둠이 4단계에 있으면 모든 멤버가 4단계)
-                appState.currentStage = 4
-                console.log(`${appState.teamId}모둠의 모둠 제안 데이터를 로드했습니다. 4단계로 이동합니다.`)
+                // 4단계 유지 (이미 4단계이므로 그대로)
+                console.log(`${appState.teamId}모둠의 모둠 제안 데이터를 로드했습니다. 4단계로 복원합니다.`)
+              }
+            }
+          } catch (error) {
+            console.error('모둠 제안 데이터 확인 실패:', error)
+          }
+        }
+      } else if (hasProgress && appState.currentStage >= 5) {
+        // 5단계 이후는 localStorage의 진행 상태를 그대로 사용 (복원된 단계 유지)
+        console.log(`${appState.teamId}모둠의 진행 상태 복원: ${appState.currentStage}단계`)
+        
+        // 4단계 데이터도 로드 (5단계 이후에도 필요할 수 있음)
+        if (db && appState.teamId) {
+          try {
+            const teamKey = `team${appState.teamId}`
+            const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+            const teamSnapshot = await get(teamProposalRef)
+            if (teamSnapshot.exists()) {
+              const teamProposalData = teamSnapshot.val()
+              if (teamProposalData) {
+                appState.teamProposal = teamProposalData
               }
             }
           } catch (error) {
@@ -2677,6 +2743,7 @@ function attachEventListeners() {
     
     // 실시간 저장 (디바운싱 적용)
     proposalProblem.addEventListener('input', () => {
+      lastInputTime.problem = Date.now() // 입력 시간 기록 (UI 업데이트 보호용)
       const value = proposalProblem.value.trim()
       saveTeamProposal('problem', value)
       checkComplete()
@@ -2695,6 +2762,7 @@ function attachEventListeners() {
     })
     
     proposalSolution.addEventListener('input', () => {
+      lastInputTime.solution = Date.now() // 입력 시간 기록 (UI 업데이트 보호용)
       const value = proposalSolution.value.trim()
       saveTeamProposal('solution', value)
       checkComplete()
@@ -2712,6 +2780,7 @@ function attachEventListeners() {
     })
     
     proposalReason.addEventListener('input', () => {
+      lastInputTime.reason = Date.now() // 입력 시간 기록 (UI 업데이트 보호용)
       const value = proposalReason.value.trim()
       saveTeamProposal('reason', value)
       checkComplete()
