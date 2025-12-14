@@ -175,7 +175,21 @@ async function renderCurrentStage() {
     case 1: return renderStage1()
     case 2: return renderStage2()
     case 3: return renderStage3()
-    case 4: return renderStage4()
+    case 4: 
+      // 4단계인 경우 Firebase에서 teamProposal을 먼저 불러옴
+      if (db && appState.teamId && !appState.teamProposal) {
+        try {
+          const teamKey = `team${appState.teamId}`
+          const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+          const snapshot = await get(teamProposalRef)
+          if (snapshot.exists()) {
+            appState.teamProposal = snapshot.val()
+          }
+        } catch (error) {
+          console.error('4단계 teamProposal 초기 로드 실패:', error)
+        }
+      }
+      return renderStage4()
     case 5: return await renderStage5()
     case 6: return await renderStage6()
     case 7: return await renderStage7()
@@ -528,7 +542,7 @@ function renderStage4() {
       
       <div style="display: flex; gap: 10px; margin-top: 20px;">
         <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
-        <button class="btn ${teamProposal.aiFeedback ? '' : 'hidden'}" id="next-stage-btn">다음 단계로 (투표하기)</button>
+        <button class="btn ${(teamProposal && teamProposal.aiFeedback) ? '' : 'hidden'}" id="next-stage-btn">다음 단계로 (투표하기)</button>
       </div>
     </div>
   `
@@ -880,7 +894,7 @@ function cleanupRealtimeListeners() {
 }
 
 // 모둠별 제안 실시간 동기화 (4단계)
-function setupTeamProposalRealtimeSync() {
+async function setupTeamProposalRealtimeSync() {
   if (!db || !appState.teamId) return
   
   cleanupRealtimeListeners()
@@ -888,7 +902,35 @@ function setupTeamProposalRealtimeSync() {
   const teamKey = `team${appState.teamId}`
   const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
   
-  // 실시간 동기화
+  // 초기 데이터 먼저 불러오기
+  try {
+    const snapshot = await get(teamProposalRef)
+    if (snapshot.exists()) {
+      const teamProposal = snapshot.val()
+      appState.teamProposal = teamProposal
+      
+      // 4단계에 있으면 화면 업데이트
+      if (appState.currentStage === 4) {
+        updateTeamProposalUI(teamProposal)
+      }
+    } else {
+      // 초기화
+      appState.teamProposal = {
+        problem: '',
+        solution: '',
+        reason: '',
+        combinedText: '',
+        aiFeedback: ''
+      }
+      if (appState.currentStage === 4) {
+        updateTeamProposalUI(appState.teamProposal)
+      }
+    }
+  } catch (error) {
+    console.error('모둠 제안 초기 로드 실패:', error)
+  }
+  
+  // 실시간 동기화 설정
   const unsubscribe = onValue(teamProposalRef, (snapshot) => {
     if (snapshot.exists()) {
       const teamProposal = snapshot.val()
@@ -920,6 +962,10 @@ function setupTeamProposalRealtimeSync() {
 
 // 모둠 제안 UI 업데이트 (다른 멤버의 입력 반영)
 function updateTeamProposalUI(teamProposal) {
+  if (!teamProposal) {
+    return // teamProposal이 없으면 업데이트하지 않음
+  }
+  
   const problemInput = document.getElementById('proposal-problem')
   const solutionInput = document.getElementById('proposal-solution')
   const reasonInput = document.getElementById('proposal-reason')
@@ -937,6 +983,14 @@ function updateTeamProposalUI(teamProposal) {
   if (combinedText && teamProposal.combinedText) {
     combinedText.textContent = teamProposal.combinedText
     document.getElementById('combined-proposal')?.classList.remove('hidden')
+    
+    // combinedText가 있지만 aiFeedback이 없으면 AI 피드백 받기 버튼 표시
+    if (!teamProposal.aiFeedback) {
+      const getFeedbackBtn = document.getElementById('get-feedback-btn')
+      if (getFeedbackBtn) {
+        getFeedbackBtn.style.display = 'block'
+      }
+    }
   }
   
   // combine 버튼 상태 업데이트
@@ -2232,13 +2286,14 @@ function attachEventListeners() {
   const proposalProblem = document.getElementById('proposal-problem')
   const proposalSolution = document.getElementById('proposal-solution')
   const proposalReason = document.getElementById('proposal-reason')
+  // 4단계: 모둠 제안 실시간 동기화 설정 (항상 실행)
+  if (appState.currentStage === 4) {
+    setupTeamProposalRealtimeSync()
+  }
+  
   const combineBtn = document.getElementById('combine-btn')
   
   if (proposalProblem && proposalSolution && proposalReason && combineBtn) {
-    // 실시간 동기화 설정
-    if (appState.currentStage === 4) {
-      setupTeamProposalRealtimeSync()
-    }
     
     const checkComplete = () => {
       const teamProposal = appState.teamProposal || {
@@ -3146,7 +3201,15 @@ function loadProgress(teamId, memberNumber) {
     if (savedData) {
       const progressData = JSON.parse(savedData)
       
-      appState.currentStage = progressData.currentStage || 0
+      // 관리자 페이지(8단계)는 복원하지 않음 - 보안상 이유로 항상 비밀번호 입력 필요
+      const savedStage = progressData.currentStage || 0
+      if (savedStage === 8) {
+        console.log('관리자 페이지는 복원하지 않습니다. 0단계로 시작합니다.')
+        appState.currentStage = 0
+      } else {
+        appState.currentStage = savedStage
+      }
+      
       appState.teamId = progressData.teamId
       appState.memberNumber = progressData.memberNumber
       appState.answers = progressData.answers || {}
@@ -3169,14 +3232,21 @@ async function init() {
   
   // 페이지 로드 시에는 항상 0단계로 시작
   // 사용자가 모둠/번호를 입력하고 "시작하기"를 눌렀을 때 해당 사용자의 진행 상태를 복원
+  // 관리자 페이지(8단계)는 절대 자동으로 복원되지 않도록 보장
+  appState.currentStage = 0
+  appState.teamId = null
+  appState.memberNumber = null
+  appState.answers = {}
+  appState.proposal = { problem: '', solution: '', reason: '' }
+  appState.teamProposal = null
+  appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+  appState.votes = {}
+  
+  // 혹시 모를 경우를 대비해 currentStage가 8이면 0으로 강제 설정
+  if (appState.currentStage === 8) {
+    console.warn('관리자 페이지가 감지되었습니다. 0단계로 초기화합니다.')
     appState.currentStage = 0
-    appState.teamId = null
-    appState.memberNumber = null
-    appState.answers = {}
-    appState.proposal = { problem: '', solution: '', reason: '' }
-    appState.teamProposal = null
-    appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-    appState.votes = {}
+  }
   
   await renderApp()
 }
