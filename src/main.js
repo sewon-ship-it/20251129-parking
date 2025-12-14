@@ -1524,7 +1524,33 @@ async function renderStage6() {
   // 실시간 업데이트 설정
   setTimeout(() => {
     setupRealtimeUpdates()
+    setupSpeechRealtimeSync() // 연설문 실시간 동기화
   }, 100)
+}
+
+// 연설문 실시간 동기화 (6단계)
+function setupSpeechRealtimeSync() {
+  if (!db) return
+  
+  const speechRef = ref(db, 'speech/winner')
+  
+  // 실시간 동기화
+  const unsubscribe = onValue(speechRef, (snapshot) => {
+    if (snapshot.exists() && appState.currentStage === 6) {
+      const speechData = snapshot.val()
+      if (speechData && speechData.content) {
+        const speechContent = document.getElementById('speech-content')
+        if (speechContent) {
+          speechContent.innerHTML = `<div class="speech-content">${speechData.content.replace(/\n/g, '<br>')}</div>`
+          document.getElementById('next-stage-btn')?.classList.remove('hidden')
+        }
+      }
+    }
+  }, (error) => {
+    console.error('연설문 실시간 동기화 오류:', error)
+  })
+  
+  appState.realtimeListeners.push(unsubscribe)
 }
 
 // 7단계: 모둠별 대시보드
@@ -1671,6 +1697,31 @@ async function renderStage7() {
       </div>
     </div>
   `
+  
+  // 실시간 업데이트 설정 (투표 결과 변경 시 대시보드 자동 업데이트)
+  setTimeout(() => {
+    setupRealtimeUpdates()
+    setupDashboardRealtimeSync() // 대시보드 실시간 동기화
+  }, 100)
+}
+
+// 대시보드 실시간 동기화 (7단계)
+function setupDashboardRealtimeSync() {
+  if (!db) return
+  
+  // 투표 데이터 변경 시 대시보드 업데이트
+  const votesRef = ref(db, 'votes/all')
+  
+  const unsubscribe = onValue(votesRef, async (snapshot) => {
+    if (appState.currentStage === 7) {
+      // 투표 데이터가 변경되면 대시보드 다시 렌더링
+      await renderApp()
+    }
+  }, (error) => {
+    console.error('대시보드 실시간 동기화 오류:', error)
+  })
+  
+  appState.realtimeListeners.push(unsubscribe)
 }
 
 // 8단계: 관리자 페이지
@@ -1952,13 +2003,15 @@ async function deleteProposal(proposalId, studentName) {
     const proposalRef = ref(db, `proposals/${proposalId}`)
     await set(proposalRef, null)
     
-    // 해당 모둠의 teamProposal 데이터도 삭제 (4단계 데이터 초기화)
+    // 해당 모둠의 teamProposal 데이터와 currentStage도 삭제 (4단계 데이터 초기화)
     const deletedProposal = allProposals.find(p => p.id === proposalId)
     if (deletedProposal && deletedProposal.teamId) {
       const teamKey = `team${deletedProposal.teamId}`
       const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+      const teamCurrentStageRef = ref(db, `teams/${teamKey}/currentStage`)
       await set(teamProposalRef, null)
-      console.log(`${teamKey}의 모둠 제안 데이터도 삭제했습니다.`)
+      await set(teamCurrentStageRef, null)
+      console.log(`${teamKey}의 모둠 제안 데이터와 진행 상태도 삭제했습니다.`)
     }
     
     // Firebase에서 투표 데이터 업데이트
@@ -2016,17 +2069,19 @@ async function clearAllData() {
     await set(votesRef, null)
     await set(deletedProposalsRef, null)
     
-    // 모든 모둠의 teamProposal 데이터도 삭제 (4단계 데이터 초기화)
-    // 1~10모둠까지 모든 가능한 모둠의 proposal 데이터 삭제
+    // 모든 모둠의 teamProposal 데이터와 currentStage도 삭제 (4단계 데이터 초기화)
+    // 1~10모둠까지 모든 가능한 모둠의 proposal 데이터와 currentStage 삭제
     const deletePromises = []
     for (let teamNum = 1; teamNum <= 10; teamNum++) {
       const teamKey = `team${teamNum}`
       const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+      const teamCurrentStageRef = ref(db, `teams/${teamKey}/currentStage`)
       deletePromises.push(set(teamProposalRef, null))
+      deletePromises.push(set(teamCurrentStageRef, null))
     }
     
     await Promise.all(deletePromises)
-    console.log(`모든 모둠(1~10)의 제안 데이터를 삭제했습니다.`)
+    console.log(`모든 모둠(1~10)의 제안 데이터와 진행 상태를 삭제했습니다.`)
     
     // 로컬 상태도 초기화
     appState.allProposals = []
@@ -2261,37 +2316,116 @@ function attachEventListeners() {
         }
       }
       
-      // 4단계 이후는 Firebase teamProposal 확인하여 모둠 진행 상태로 전환
-      if (!hasProgress || appState.currentStage < 4) {
-        // 개별 진행 상태가 없거나 3단계 이하인 경우, Firebase에서 모둠 진행 상태 확인
-        if (db && appState.teamId) {
-          try {
-            const teamKey = `team${appState.teamId}`
-            const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
-            const teamSnapshot = await get(teamProposalRef)
-            if (teamSnapshot.exists()) {
-              const teamProposalData = teamSnapshot.val()
-              if (teamProposalData && (teamProposalData.problem || teamProposalData.solution || teamProposalData.reason || teamProposalData.combinedText)) {
-                // 모둠이 4단계에 있으면 이 학생도 4단계로 이동
-                appState.teamProposal = teamProposalData
-                appState.currentStage = 4
-                console.log(`${appState.teamId}모둠의 모둠 제안이 있습니다. 4단계로 이동합니다.`)
-                saveProgress() // 모둠 진행 상태 저장
+      // 4단계 이후는 Firebase에서 모둠 진행 상태 확인하여 동기화
+      // 같은 모둠의 모든 학생은 같은 진행 상태를 공유해야 하므로, Firebase를 항상 확인
+      if (db && appState.teamId) {
+        try {
+          const teamKey = `team${appState.teamId}`
+          
+          // 1. 모둠의 currentStage 확인 (4단계 이상일 때)
+          const teamCurrentStageRef = ref(db, `teams/${teamKey}/currentStage`)
+          const teamCurrentStageSnapshot = await get(teamCurrentStageRef)
+          const teamCurrentStage = teamCurrentStageSnapshot.exists() ? teamCurrentStageSnapshot.val() : null
+          
+          // 2. teamProposal 확인 (4단계일 때)
+          const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+          const teamProposalSnapshot = await get(teamProposalRef)
+          const hasTeamProposal = teamProposalSnapshot.exists() && teamProposalSnapshot.val() && 
+                                  (teamProposalSnapshot.val().problem || teamProposalSnapshot.val().solution || 
+                                   teamProposalSnapshot.val().reason || teamProposalSnapshot.val().combinedText)
+          
+          // 3. 모둠 진행 상태가 있으면 동기화
+          if (teamCurrentStage && teamCurrentStage >= 4) {
+            // 모둠이 4단계 이상에 있으면 이 학생도 같은 단계로 이동
+            if (teamCurrentStage === 4) {
+              // 4단계: teamProposal이 있어야 함
+              if (hasTeamProposal) {
+                appState.teamProposal = teamProposalSnapshot.val()
+                if (!hasProgress || appState.currentStage < 4) {
+                  const previousStage = appState.currentStage
+                  appState.currentStage = 4
+                  console.log(`${appState.teamId}모둠의 모둠 제안이 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 4단계로 이동합니다.`)
+                  saveProgress()
+                } else if (appState.currentStage === 4) {
+                  console.log(`${appState.teamId}모둠의 모둠 제안 데이터를 로드했습니다. 4단계 유지.`)
+                }
+              } else {
+                // teamProposal이 없으면 1단계로 초기화 (데이터 삭제됨)
+                console.log(`${appState.teamId}모둠의 teamProposal이 없습니다. 1단계로 초기화합니다.`)
+                appState.currentStage = 1
+                appState.teamProposal = null
+                appState.answers = {}
+                appState.proposal = { problem: '', solution: '', reason: '' }
+                appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+                appState.votes = {}
+                saveProgress()
+              }
+            } else if (teamCurrentStage === 5) {
+              // 5단계: 모둠이 5단계에 있으면 이 학생도 5단계로 이동
+              // 단, 투표가 종료된 상태이면 6단계로 이동
+              if (votingStatus === 'closed') {
+                // 투표 종료 상태이면 6단계로 이동
+                const previousStage = appState.currentStage
+                appState.currentStage = 6
+                console.log(`${appState.teamId}모둠이 5단계에 있지만 투표가 종료되어 6단계로 이동합니다.`)
+                saveProgress()
+              } else if (!hasProgress || appState.currentStage < 5) {
+                // 투표 진행 중이면 5단계로 이동
+                const previousStage = appState.currentStage
+                appState.currentStage = 5
+                console.log(`${appState.teamId}모둠이 5단계에 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 5단계로 이동합니다.`)
+                saveProgress()
+              }
+            } else if (teamCurrentStage >= 6) {
+              // 6단계 이상: 모둠이 6단계 이상에 있으면 이 학생도 같은 단계로 이동
+              if (!hasProgress || appState.currentStage < teamCurrentStage) {
+                const previousStage = appState.currentStage
+                appState.currentStage = teamCurrentStage
+                console.log(`${appState.teamId}모둠이 ${teamCurrentStage}단계에 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 ${teamCurrentStage}단계로 이동합니다.`)
+                saveProgress()
               }
             }
-          } catch (error) {
-            console.error('모둠 제안 데이터 확인 실패:', error)
+          } else if (hasTeamProposal) {
+            // teamProposal은 있지만 currentStage가 없으면 4단계로 설정 (하위 호환성)
+            appState.teamProposal = teamProposalSnapshot.val()
+            if (!hasProgress || appState.currentStage < 4) {
+              const previousStage = appState.currentStage
+              appState.currentStage = 4
+              console.log(`${appState.teamId}모둠의 모둠 제안이 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 4단계로 이동합니다.`)
+              saveProgress()
+            }
+          } else {
+            // teamProposal도 없고 currentStage도 없으면 1단계로 초기화 (데이터 삭제됨)
+            if (hasProgress && appState.currentStage >= 4) {
+              console.log(`${appState.teamId}모둠의 데이터가 없습니다. 1단계로 초기화합니다.`)
+              appState.currentStage = 1
+              appState.teamProposal = null
+              appState.answers = {}
+              appState.proposal = { problem: '', solution: '', reason: '' }
+              appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+              appState.votes = {}
+              saveProgress()
+            }
           }
+        } catch (error) {
+          console.error('모둠 진행 상태 확인 실패:', error)
+        }
+      }
+      
+      // 투표 종료 상태 확인 및 단계 조정 (모둠 진행 상태 복원 후에도 확인)
+      if (votingStatus === 'closed') {
+        // 투표가 종료된 상태에서는 5단계 접근 불가, 6단계나 7단계로 이동
+        if (appState.currentStage === 5) {
+          console.log('투표가 종료되어 5단계에서 6단계로 이동합니다.')
+          appState.currentStage = 6
+          saveProgress()
         }
       }
       
       // hasProgress가 true인 경우에만 실행되는 코드들
       if (hasProgress && appState.currentStage > 0) {
-        // 투표가 종료되었고 5단계 이상 완료했다면 6단계로 자동 전환
-        if (votingStatus === 'closed' && appState.currentStage >= 5) {
-          console.log('투표가 종료되었습니다. 5단계 이상 완료한 학생을 6단계로 자동 전환합니다.')
-          appState.currentStage = 6
-        }
+        // 투표가 종료되었고 5단계 이상 완료했다면 6단계로 자동 전환 (이미 위에서 처리됨)
+        // 이 부분은 제거 (위에서 이미 처리)
         
         // CSV 데이터가 필요한 단계인 경우 로드
         if (appState.currentStage >= 1 && appState.currentStage <= 4) {
@@ -3729,6 +3863,24 @@ async function generateSpeech() {
   const speechContent = document.getElementById('speech-content')
   if (!speechContent) return
   
+  // Firebase에서 이미 생성된 연설문이 있는지 확인
+  if (db) {
+    try {
+      const speechRef = ref(db, 'speech/winner')
+      const snapshot = await get(speechRef)
+      if (snapshot.exists()) {
+        const savedSpeech = snapshot.val()
+        if (savedSpeech && savedSpeech.content) {
+          speechContent.innerHTML = `<div class="speech-content">${savedSpeech.content.replace(/\n/g, '<br>')}</div>`
+          document.getElementById('next-stage-btn')?.classList.remove('hidden')
+          return
+        }
+      }
+    } catch (error) {
+      console.error('연설문 로드 실패:', error)
+    }
+  }
+  
   const proposals = appState.allProposals.length > 0 
     ? appState.allProposals 
     : await loadProposalsFromFirebase()
@@ -3800,8 +3952,23 @@ async function generateSpeech() {
   try {
     const speech = await callOpenAI(prompt, '당신은 초등학생들을 대상으로 한 연설문을 작성하는 전문가입니다.')
     
+    // Firebase에 연설문 저장 (모든 모둠이 공유)
+    if (db) {
+      try {
+        const speechRef = ref(db, 'speech/winner')
+        await set(speechRef, {
+          content: speech,
+          winnerName: winner.proposal.name,
+          winnerTeamId: winner.proposal.teamId,
+          generatedAt: new Date().toISOString()
+        })
+      } catch (error) {
+        console.error('연설문 저장 실패:', error)
+      }
+    }
+    
     speechContent.innerHTML = `<div class="speech-content">${speech.replace(/\n/g, '<br>')}</div>`
-    document.getElementById('next-stage-btn').classList.remove('hidden')
+    document.getElementById('next-stage-btn')?.classList.remove('hidden')
   } catch (error) {
     speechContent.innerHTML = `<p style="color: red;">연설문 생성 중 오류가 발생했습니다: ${error.message}</p>`
   }
@@ -3817,6 +3984,21 @@ function getUserProgressKey(teamId, sessionId, stage) {
   }
   // 4단계 이후는 모둠별 공유 (하지만 localStorage에는 개별 진행 상태 저장)
   return `progress_${teamId}_${sessionId}`
+}
+
+// Firebase에 모둠 진행 상태 저장 (백그라운드 실행)
+async function saveTeamCurrentStageToFirebase() {
+  if (!appState.teamId || !appState.sessionId || !db || appState.currentStage < 4) {
+    return
+  }
+  
+  try {
+    const teamKey = `team${appState.teamId}`
+    const teamCurrentStageRef = ref(db, `teams/${teamKey}/currentStage`)
+    await set(teamCurrentStageRef, appState.currentStage)
+  } catch (error) {
+    console.error('Firebase 모둠 진행 상태 저장 실패:', error)
+  }
 }
 
 // 진행 상태 저장
@@ -3846,6 +4028,11 @@ function saveProgress() {
       teamId: appState.teamId,
       sessionId: appState.sessionId
     }))
+    
+    // 4단계 이상은 Firebase에 모둠 진행 상태 저장 (모둠 공유) - 백그라운드 실행
+    saveTeamCurrentStageToFirebase().catch(error => {
+      console.error('Firebase 모둠 진행 상태 저장 실패:', error)
+    })
   } catch (error) {
     console.error('진행 상태 저장 실패:', error)
   }
