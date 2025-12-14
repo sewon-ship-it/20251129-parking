@@ -1999,8 +1999,10 @@ function attachEventListeners() {
   const startBtn = document.getElementById('start-btn')
   
   // 0단계가 아닌 경우 이 요소들이 없어도 정상이므로 에러를 출력하지 않음
+  // 0단계인 경우에만 이 요소들이 필요함
   if (appState.currentStage === 0) {
     if (!teamSelect || !memberSelect || !startBtn) {
+      // 0단계인데 필수 요소가 없으면 경고만 출력하고 종료
       console.warn('⚠️ 0단계 필수 요소를 찾을 수 없습니다:', { 
         teamSelect: !!teamSelect, 
         memberSelect: !!memberSelect, 
@@ -2008,9 +2010,13 @@ function attachEventListeners() {
       })
       return // 0단계인데 필수 요소가 없으면 이벤트 리스너를 설정할 수 없음
     }
+  } else {
+    // 0단계가 아닌 경우 이 요소들이 없어도 정상이므로 아무것도 하지 않음
+    // (다른 단계의 이벤트 리스너는 아래에서 처리됨)
   }
   
-  if (teamSelect && memberSelect && startBtn) {
+  // 0단계인 경우에만 이벤트 리스너 설정
+  if (teamSelect && memberSelect && startBtn && appState.currentStage === 0) {
     // 초기값을 appState에 설정 (이전 값이 표시된 경우)
     if (teamSelect.value) {
       appState.teamId = parseInt(teamSelect.value)
