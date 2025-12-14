@@ -513,16 +513,16 @@ function renderStage4() {
         
         ${teamProposal.combinedText ? `
           ${!teamProposal.aiFeedback ? `
-            <button class="btn" id="get-feedback-btn" style="margin-top: 20px;">AI 피드백 받기</button>
+          <button class="btn" id="get-feedback-btn" style="margin-top: 20px;">AI 피드백 받기</button>
           ` : ''}
           <div id="ai-feedback-container" class="${teamProposal.aiFeedback ? 'question-card' : 'hidden'}" style="margin-top: 20px;">
-            ${teamProposal.aiFeedback ? `
+          ${teamProposal.aiFeedback ? `
               <div class="ai-feedback">
                 <h3>🤖 AI 선생님의 피드백</h3>
                 <div class="ai-feedback-content">${teamProposal.aiFeedback.replace(/\n/g, '<br>')}</div>
               </div>
             ` : ''}
-          </div>
+            </div>
         ` : ''}
       </div>
       
@@ -1798,7 +1798,7 @@ function attachEventListeners() {
     memberSelect.addEventListener('change', (e) => {
       appState.memberNumber = e.target.value ? parseInt(e.target.value) : null
       updateStartButton()
-    })
+      })
     
     function updateStartButton() {
       if (startBtn && teamSelect && memberSelect) {
@@ -1826,24 +1826,24 @@ function attachEventListeners() {
       appState.teamId = teamId
       appState.memberNumber = memberNumber
       
-      // 모둠 정보 저장
-      const teamKey = `team${appState.teamId}`
-      const memberKey = `${teamKey}-member${appState.memberNumber}`
-      
+        // 모둠 정보 저장
+        const teamKey = `team${appState.teamId}`
+        const memberKey = `${teamKey}-member${appState.memberNumber}`
+        
       // Firebase에 모둠 멤버 정보 저장
       if (db) {
-        try {
-          const memberRef = ref(db, `teams/${teamKey}/members/${memberKey}`)
-          await set(memberRef, {
+          try {
+            const memberRef = ref(db, `teams/${teamKey}/members/${memberKey}`)
+            await set(memberRef, {
             name: `멤버${appState.memberNumber}`,
-            memberNumber: appState.memberNumber,
-            joinedAt: new Date().toISOString()
-          })
-        } catch (error) {
-          console.error('멤버 정보 저장 실패:', error)
+              memberNumber: appState.memberNumber,
+              joinedAt: new Date().toISOString()
+            })
+          } catch (error) {
+            console.error('멤버 정보 저장 실패:', error)
+          }
         }
-      }
-      
+        
       // 해당 사용자의 진행 상태 복원 시도
       const hasProgress = loadProgress(appState.teamId, appState.memberNumber)
       
@@ -1930,40 +1930,40 @@ function attachEventListeners() {
           appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
           appState.votes = {}
           
-          try {
-            console.log('CSV 파일 로드 시작...')
-            appState.parkingData = await parseCSV('/illegal_parking.csv')
-            console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
-            appState.cctvData = await parseCSV('/cctv.csv')
-            console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
-            saveProgress()
+        try {
+          console.log('CSV 파일 로드 시작...')
+          appState.parkingData = await parseCSV('/illegal_parking.csv')
+          console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
+          appState.cctvData = await parseCSV('/cctv.csv')
+          console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
+          saveProgress()
             await renderApp()
-            setTimeout(() => {
-              renderCharts()
-            }, 100)
-          } catch (error) {
-            console.error('데이터 로드 실패:', error)
-            alert('데이터를 불러오는데 실패했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
-          }
+          setTimeout(() => {
+            renderCharts()
+          }, 100)
+        } catch (error) {
+          console.error('데이터 로드 실패:', error)
+          alert('데이터를 불러오는데 실패했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
         }
+      }
     })
   } else {
     console.error('필수 요소를 찾을 수 없습니다:', { teamSelect, memberSelect, startBtn })
   }
-  
-  // 관리자 페이지 버튼
-  const adminBtn = document.getElementById('admin-btn')
-  if (adminBtn) {
-    adminBtn.addEventListener('click', () => {
-      const password = prompt('관리자 비밀번호를 입력하세요:')
-      if (password === 'teacher2024' || password === 'admin') {
-        appState.currentStage = 8
-        saveProgress()
-        renderApp()
-      } else if (password !== null) {
-        alert('비밀번호가 올바르지 않습니다.')
-      }
-    })
+    
+    // 관리자 페이지 버튼
+    const adminBtn = document.getElementById('admin-btn')
+    if (adminBtn) {
+      adminBtn.addEventListener('click', () => {
+        const password = prompt('관리자 비밀번호를 입력하세요:')
+        if (password === 'teacher2024' || password === 'admin') {
+          appState.currentStage = 8
+          saveProgress()
+          renderApp()
+        } else if (password !== null) {
+          alert('비밀번호가 올바르지 않습니다.')
+        }
+      })
   }
   
   // 1단계: 가정통신문 드래그 앤 드롭
@@ -3169,14 +3169,14 @@ async function init() {
   
   // 페이지 로드 시에는 항상 0단계로 시작
   // 사용자가 모둠/번호를 입력하고 "시작하기"를 눌렀을 때 해당 사용자의 진행 상태를 복원
-  appState.currentStage = 0
-  appState.teamId = null
-  appState.memberNumber = null
-  appState.answers = {}
-  appState.proposal = { problem: '', solution: '', reason: '' }
-  appState.teamProposal = null
-  appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-  appState.votes = {}
+    appState.currentStage = 0
+    appState.teamId = null
+    appState.memberNumber = null
+    appState.answers = {}
+    appState.proposal = { problem: '', solution: '', reason: '' }
+    appState.teamProposal = null
+    appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+    appState.votes = {}
   
   await renderApp()
 }
