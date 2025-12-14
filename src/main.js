@@ -1892,7 +1892,7 @@ async function deleteProposal(proposalId, studentName) {
     // 삭제된 제안 목록에 추가 (학생이 다시 4단계부터 시작할 수 있도록)
     await saveDeletedProposal(studentName)
     
-    alert(`✅ ${studentName}님의 제안이 삭제되었습니다!\n\n${studentName}님이 다시 이름을 입력하면 4단계(제안 쓰기)부터 시작할 수 있습니다.`)
+    alert(`✅ ${studentName}님의 제안이 삭제되었습니다!\n\n${studentName}님이 다시 접속하면 4단계(제안 쓰기)부터 시작할 수 있습니다.`)
     
     // 관리자 페이지 새로고침
     appState.currentStage = 8
@@ -1933,7 +1933,7 @@ async function deleteProposal(proposalId, studentName) {
     // 삭제된 제안 목록에 추가 (학생이 다시 4단계부터 시작할 수 있도록)
     await saveDeletedProposal(studentName)
     
-    alert(`✅ ${studentName}님의 제안이 삭제되었습니다!\n\n${studentName}님이 다시 이름을 입력하면 4단계(제안 쓰기)부터 시작할 수 있습니다.`)
+    alert(`✅ ${studentName}님의 제안이 삭제되었습니다!\n\n${studentName}님이 다시 접속하면 4단계(제안 쓰기)부터 시작할 수 있습니다.`)
     
     // 관리자 페이지 새로고침
     appState.currentStage = 8
