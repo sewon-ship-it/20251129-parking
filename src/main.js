@@ -1905,6 +1905,25 @@ async function clearAllData() {
     await set(votesRef, null)
     await set(deletedProposalsRef, null)
     
+    // 모든 모둠의 teamProposal 데이터도 삭제 (4단계 데이터 초기화)
+    const teamsRef = ref(db, 'teams')
+    const teamsSnapshot = await get(teamsRef)
+    if (teamsSnapshot.exists()) {
+      const teamsData = teamsSnapshot.val()
+      const deletePromises = []
+      
+      // 모든 모둠의 proposal 데이터 삭제
+      Object.keys(teamsData).forEach(teamKey => {
+        if (teamsData[teamKey] && teamsData[teamKey].proposal) {
+          const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+          deletePromises.push(set(teamProposalRef, null))
+        }
+      })
+      
+      await Promise.all(deletePromises)
+      console.log(`모든 모둠의 제안 데이터(${deletePromises.length}개)를 삭제했습니다.`)
+    }
+    
     // 로컬 상태도 초기화
     appState.allProposals = []
     appState.votes = {}
@@ -1912,7 +1931,7 @@ async function clearAllData() {
     localStorage.removeItem('votes')
     localStorage.removeItem('deletedProposals')
     
-    alert('✅ 모든 데이터가 성공적으로 삭제되었습니다!')
+    alert('✅ 모든 데이터가 성공적으로 삭제되었습니다! (제안, 투표, 모둠 제안 데이터 모두 삭제됨)')
     
     // 관리자 페이지 새로고침
     appState.currentStage = 8
