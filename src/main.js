@@ -268,7 +268,6 @@ function renderStage0() {
   }
   
   const displayTeamId = appState.teamId || (lastUser ? lastUser.teamId : null)
-  const displayMemberNumber = appState.memberNumber || (lastUser ? lastUser.memberNumber : null)
   
   return `
     <div class="stage-container">
@@ -284,7 +283,7 @@ function renderStage0() {
         </p>
         
         <div class="question-card" style="margin-bottom: 30px; max-width: 600px; margin-left: auto; margin-right: auto;">
-          <h3 style="color: var(--winter-blue-700); margin-bottom: 20px;">모둠 및 번호 선택</h3>
+          <h3 style="color: var(--winter-blue-700); margin-bottom: 20px;">모둠 선택</h3>
           
           <div class="input-group" style="margin-bottom: 25px;">
             <label class="input-label">모둠을 선택하세요 (1~6모둠)</label>
@@ -292,16 +291,6 @@ function renderStage0() {
               <option value="">모둠 선택</option>
               ${[1, 2, 3, 4, 5, 6].map(num => `
                 <option value="${num}" ${displayTeamId === num ? 'selected' : ''}>${num}모둠</option>
-              `).join('')}
-            </select>
-          </div>
-          
-          <div class="input-group" style="margin-bottom: 25px;">
-            <label class="input-label">모둠 내 번호를 선택하세요 (1~4번)</label>
-            <select id="member-select" class="input-field" style="font-size: 1.1em; padding: 12px;">
-              <option value="">번호 선택</option>
-              ${[1, 2, 3, 4].map(num => `
-                <option value="${num}" ${displayMemberNumber === num ? 'selected' : ''}>${num}번</option>
               `).join('')}
             </select>
           </div>
@@ -316,7 +305,7 @@ function renderStage0() {
           </div>
         </div>
         
-        <button class="btn btn-success" id="start-btn" ${(appState.teamId && appState.memberNumber) ? '' : 'disabled'}>
+        <button class="btn btn-success" id="start-btn" ${appState.teamId ? '' : 'disabled'}>
           시작하기 🚀
         </button>
         <div style="margin-top: 30px; padding-top: 20px; border-top: 2px dashed var(--winter-blue-300);">
@@ -810,8 +799,11 @@ async function renderStage5() {
         </div>
         <p style="text-align: center; font-size: 1.2em; padding: 40px;">
           다른 친구들의 제안이 아직 없습니다. 잠시만 기다려주세요.
-    </p>
-  </div>
+        </p>
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+          <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
+        </div>
+      </div>
     `
   }
   
@@ -1993,19 +1985,17 @@ async function clearAllData() {
 
 // 이벤트 리스너 연결
 function attachEventListeners() {
-  // 0단계: 모둠 및 번호 선택 (0단계에서만 존재하는 요소들)
+  // 0단계: 모둠 선택 (0단계에서만 존재하는 요소들)
   const teamSelect = document.getElementById('team-select')
-  const memberSelect = document.getElementById('member-select')
   const startBtn = document.getElementById('start-btn')
-  
+
   // 0단계가 아닌 경우 이 요소들이 없어도 정상이므로 에러를 출력하지 않음
   // 0단계인 경우에만 이 요소들이 필요함
   if (appState.currentStage === 0) {
-    if (!teamSelect || !memberSelect || !startBtn) {
+    if (!teamSelect || !startBtn) {
       // 0단계인데 필수 요소가 없으면 경고만 출력하고 종료
       console.warn('⚠️ 0단계 필수 요소를 찾을 수 없습니다:', { 
         teamSelect: !!teamSelect, 
-        memberSelect: !!memberSelect, 
         startBtn: !!startBtn 
       })
       return // 0단계인데 필수 요소가 없으면 이벤트 리스너를 설정할 수 없음
@@ -2016,31 +2006,24 @@ function attachEventListeners() {
   }
   
   // 0단계인 경우에만 이벤트 리스너 설정
-  if (teamSelect && memberSelect && startBtn && appState.currentStage === 0) {
+  if (teamSelect && startBtn && appState.currentStage === 0) {
     // 초기값을 appState에 설정 (이전 값이 표시된 경우)
     if (teamSelect.value) {
       appState.teamId = parseInt(teamSelect.value)
     }
-    if (memberSelect.value) {
-      appState.memberNumber = parseInt(memberSelect.value)
-    }
+    // memberNumber는 항상 1로 고정
+    appState.memberNumber = 1
     
     teamSelect.addEventListener('change', (e) => {
       appState.teamId = e.target.value ? parseInt(e.target.value) : null
       updateStartButton()
     })
     
-    memberSelect.addEventListener('change', (e) => {
-      appState.memberNumber = e.target.value ? parseInt(e.target.value) : null
-      updateStartButton()
-      })
-    
     function updateStartButton() {
-      if (startBtn && teamSelect && memberSelect) {
+      if (startBtn && teamSelect) {
         // DOM 요소의 값을 직접 확인 (더 안전함)
         const hasTeam = teamSelect.value && teamSelect.value !== ''
-        const hasMember = memberSelect.value && memberSelect.value !== ''
-        startBtn.disabled = !(hasTeam && hasMember)
+        startBtn.disabled = !hasTeam
       }
     }
     
@@ -2050,28 +2033,27 @@ function attachEventListeners() {
     startBtn.addEventListener('click', async () => {
       // DOM에서 직접 값을 읽어옴 (더 안전함)
       const teamId = teamSelect.value ? parseInt(teamSelect.value) : null
-      const memberNumber = memberSelect.value ? parseInt(memberSelect.value) : null
       
-      if (!teamId || !memberNumber) {
-        alert('모둠과 번호를 모두 선택해주세요.')
+      if (!teamId) {
+        alert('모둠을 선택해주세요.')
         return
       }
       
       // appState에 설정
       appState.teamId = teamId
-      appState.memberNumber = memberNumber
+      appState.memberNumber = 1 // 항상 1로 고정
       
         // 모둠 정보 저장
         const teamKey = `team${appState.teamId}`
-        const memberKey = `${teamKey}-member${appState.memberNumber}`
+        const memberKey = `${teamKey}-member1`
         
       // Firebase에 모둠 멤버 정보 저장
       if (db) {
           try {
             const memberRef = ref(db, `teams/${teamKey}/members/${memberKey}`)
             await set(memberRef, {
-            name: `멤버${appState.memberNumber}`,
-              memberNumber: appState.memberNumber,
+            name: `멤버1`,
+              memberNumber: 1,
               joinedAt: new Date().toISOString()
             })
           } catch (error) {
@@ -2079,8 +2061,8 @@ function attachEventListeners() {
           }
         }
         
-      // 해당 사용자의 진행 상태 복원 시도
-      const hasProgress = loadProgress(appState.teamId, appState.memberNumber)
+      // 해당 모둠의 진행 상태 복원 시도
+      const hasProgress = loadProgress(appState.teamId)
       
       // 투표 상태 먼저 확인
       const votingStatus = await getVotingStatus()
@@ -2099,7 +2081,7 @@ function attachEventListeners() {
       
       if (hasProgress && appState.currentStage > 0) {
           // 진행 상태가 있으면 해당 단계로 복원
-          console.log(`${appState.teamId}모둠 ${appState.memberNumber}번의 진행 상태 복원: ${appState.currentStage}단계`)
+          console.log(`${appState.teamId}모둠의 진행 상태 복원: ${appState.currentStage}단계`)
           
           // 투표 재개 상태이고 제안 데이터가 없으면 진행 상태 초기화 (새로 시작)
           if (votingStatus === 'open') {
@@ -2255,7 +2237,7 @@ function attachEventListeners() {
         } else {
           // 진행 상태가 없지만, 투표가 종료되었고 해당 모둠이 투표를 완료했다면 6단계로 전환
           if (votingStatus === 'closed' && hasTeamVote) {
-            console.log(`${appState.teamId}모둠 ${appState.memberNumber}번: 투표가 종료되었고 투표 완료 확인. 6단계로 자동 전환합니다.`)
+            console.log(`${appState.teamId}모둠: 투표가 종료되었고 투표 완료 확인. 6단계로 자동 전환합니다.`)
             appState.currentStage = 6
             saveProgress()
             await renderApp()
@@ -2266,7 +2248,7 @@ function attachEventListeners() {
           }
           
           // 진행 상태가 없으면 1단계부터 시작
-          console.log(`${appState.teamId}모둠 ${appState.memberNumber}번의 새 시작: 1단계`)
+          console.log(`${appState.teamId}모둠의 새 시작: 1단계`)
           
           // 진행 상태 초기화
           appState.currentStage = 1
@@ -3669,23 +3651,23 @@ async function generateSpeech() {
 }
 
 // 사용자별 진행 상태 키 생성
-function getUserProgressKey(teamId, memberNumber) {
-  return `progress_${teamId}_${memberNumber}`
+function getUserProgressKey(teamId) {
+  return `progress_${teamId}`
 }
 
 // 진행 상태 저장
 function saveProgress() {
-  if (!appState.teamId || !appState.memberNumber) {
-    return // 모둠/번호가 없으면 저장하지 않음
+  if (!appState.teamId) {
+    return // 모둠이 없으면 저장하지 않음
   }
   
   try {
-    const userKey = getUserProgressKey(appState.teamId, appState.memberNumber)
+    const userKey = getUserProgressKey(appState.teamId)
     
     const progressData = {
       currentStage: appState.currentStage,
       teamId: appState.teamId,
-      memberNumber: appState.memberNumber,
+      memberNumber: 1, // 항상 1로 고정 (하위 호환성 유지)
       answers: appState.answers,
       proposal: appState.proposal,
       questionAnswers: appState.questionAnswers,
@@ -3696,22 +3678,21 @@ function saveProgress() {
     
     // 현재 사용자 정보도 저장 (페이지 로드 시 확인용)
     localStorage.setItem('lastUser', JSON.stringify({
-      teamId: appState.teamId,
-      memberNumber: appState.memberNumber
+      teamId: appState.teamId
     }))
   } catch (error) {
     console.error('진행 상태 저장 실패:', error)
   }
 }
 
-// 진행 상태 복원 (특정 사용자의 진행 상태)
-function loadProgress(teamId, memberNumber) {
-  if (!teamId || !memberNumber) {
-    return false // 모둠/번호가 없으면 복원하지 않음
+// 진행 상태 복원 (모둠별 진행 상태)
+function loadProgress(teamId) {
+  if (!teamId) {
+    return false // 모둠이 없으면 복원하지 않음
   }
   
   try {
-    const userKey = getUserProgressKey(teamId, memberNumber)
+    const userKey = getUserProgressKey(teamId)
     const savedData = localStorage.getItem(userKey)
     
     if (savedData) {
@@ -3727,7 +3708,7 @@ function loadProgress(teamId, memberNumber) {
       }
       
       appState.teamId = progressData.teamId
-      appState.memberNumber = progressData.memberNumber
+      appState.memberNumber = 1 // 항상 1로 고정 (하위 호환성 유지)
       appState.answers = progressData.answers || {}
       appState.proposal = progressData.proposal || { problem: '', solution: '', reason: '' }
       appState.questionAnswers = progressData.questionAnswers || { question1: null, question2: null, question1Correct: null, question2Correct: null }
