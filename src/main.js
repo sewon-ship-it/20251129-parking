@@ -44,7 +44,8 @@ const appState = {
     question2Correct: null
   },
   teamProposal: null, // 모둠별 제안 (4단계부터 사용)
-  realtimeListeners: [] // 실시간 리스너 정리용
+  realtimeListeners: [], // 실시간 리스너 정리용
+  heartbeatInterval: null // 접속 추적용 heartbeat 인터벌
 }
 
 // CSV 파싱 함수
@@ -623,22 +624,37 @@ async function loadProposalsFromFirebase() {
   }
 }
 
-// 모둠 내 진행 중인 인원 수 확인
+// 모둠 내 진행 중인 인원 수 확인 (최근 1분 이내 활동한 세션 수)
 async function getActiveTeamMemberCount() {
   if (!db || !appState.teamId) return 1
   
   try {
     const teamKey = `team${appState.teamId}`
-    const membersRef = ref(db, `teams/${teamKey}/members`)
-    const snapshot = await get(membersRef)
+    const activeSessionsRef = ref(db, `teams/${teamKey}/activeSessions`)
+    const snapshot = await get(activeSessionsRef)
     
     if (snapshot.exists()) {
-      const members = snapshot.val()
-      return Object.keys(members).length
+      const sessions = snapshot.val()
+      const now = new Date().getTime()
+      const oneMinuteAgo = now - 60000 // 1분 전
+      
+      // 최근 1분 이내에 활동한 세션만 카운트
+      let activeCount = 0
+      Object.keys(sessions).forEach(sessionId => {
+        const session = sessions[sessionId]
+        if (session && session.lastActiveAt) {
+          const lastActiveTime = new Date(session.lastActiveAt).getTime()
+          if (lastActiveTime > oneMinuteAgo) {
+            activeCount++
+          }
+        }
+      })
+      
+      return activeCount > 0 ? activeCount : 1 // 최소 1명
     }
     return 1
   } catch (error) {
-    console.error('모둠 멤버 수 확인 실패:', error)
+    console.error('모둠 인원 수 확인 실패:', error)
     return 1
   }
 }
@@ -2046,23 +2062,41 @@ function attachEventListeners() {
       // 세션 ID 초기화 (개별 진행 상태 구분용)
       appState.sessionId = getOrCreateSessionId()
       
-        // 모둠 정보 저장
-        const teamKey = `team${appState.teamId}`
-        const memberKey = `${teamKey}-member1`
-        
-      // Firebase에 모둠 멤버 정보 저장
+      // Firebase에 모둠 접속 정보 저장 (4단계 이후 모둠 공유를 위한 간단한 추적)
       if (db) {
-          try {
-            const memberRef = ref(db, `teams/${teamKey}/members/${memberKey}`)
-            await set(memberRef, {
-            name: `멤버1`,
-              memberNumber: 1,
-              joinedAt: new Date().toISOString()
-            })
-          } catch (error) {
-            console.error('멤버 정보 저장 실패:', error)
+        try {
+          const teamKey = `team${appState.teamId}`
+          const activeSessionRef = ref(db, `teams/${teamKey}/activeSessions/${appState.sessionId}`)
+          await set(activeSessionRef, {
+            lastActiveAt: new Date().toISOString()
+          })
+          
+          // 페이지 언로드 시 자신의 세션 정보 삭제
+          window.addEventListener('beforeunload', () => {
+            if (db && appState.teamId && appState.sessionId) {
+              const teamKey = `team${appState.teamId}`
+              const activeSessionRef = ref(db, `teams/${teamKey}/activeSessions/${appState.sessionId}`)
+              set(activeSessionRef, null).catch(() => {}) // 에러 무시 (페이지가 닫히는 중이므로)
+            }
+          })
+          
+          // 주기적으로 활동 시간 업데이트 (30초마다)
+          if (appState.heartbeatInterval) {
+            clearInterval(appState.heartbeatInterval)
           }
+          appState.heartbeatInterval = setInterval(() => {
+            if (db && appState.teamId && appState.sessionId) {
+              const teamKey = `team${appState.teamId}`
+              const activeSessionRef = ref(db, `teams/${teamKey}/activeSessions/${appState.sessionId}`)
+              set(activeSessionRef, {
+                lastActiveAt: new Date().toISOString()
+              }).catch(() => {}) // 에러 무시
+            }
+          }, 30000) // 30초마다 업데이트
+        } catch (error) {
+          console.error('접속 정보 저장 실패:', error)
         }
+      }
         
       // 해당 사용자의 진행 상태 복원 시도 (1~3단계는 개별, 4단계 이후는 모둠별)
       const hasProgress = loadProgress(appState.teamId, appState.sessionId)
