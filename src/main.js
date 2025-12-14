@@ -115,11 +115,15 @@ async function checkAPIKey() {
 async function callOpenAI(prompt, systemPrompt = '') {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY
   
+  console.log('🔑 API Key 확인:', apiKey ? '설정됨' : '없음')
+  
   if (!apiKey) {
+    console.error('❌ API Key가 설정되지 않았습니다.')
     throw new Error('API Key가 설정되지 않았습니다.')
   }
   
   try {
+    console.log('📤 OpenAI API 요청 전송 중...')
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -137,15 +141,37 @@ async function callOpenAI(prompt, systemPrompt = '') {
       })
     })
     
+    console.log('📥 OpenAI API 응답 상태:', response.status, response.statusText)
+    
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.error?.message || 'API 호출 실패')
+      console.error('❌ OpenAI API 오류 응답:', error)
+      throw new Error(error.error?.message || `API 호출 실패 (${response.status})`)
     }
     
     const data = await response.json()
-    return data.choices[0].message.content
+    console.log('✅ OpenAI API 응답 데이터 수신:', {
+      hasChoices: !!data.choices,
+      choicesLength: data.choices?.length,
+      hasMessage: !!data.choices?.[0]?.message,
+      hasContent: !!data.choices?.[0]?.message?.content
+    })
+    
+    const content = data.choices?.[0]?.message?.content
+    if (!content || content.trim().length === 0) {
+      console.error('❌ AI 응답이 비어있습니다. 전체 응답:', data)
+      throw new Error('AI 응답이 비어있습니다.')
+    }
+    
+    console.log('✅ AI 응답 내용 길이:', content.length)
+    return content
   } catch (error) {
-    console.error('OpenAI API 호출 오류:', error)
+    console.error('❌ OpenAI API 호출 오류:', error)
+    console.error('오류 상세:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    })
     throw error
   }
 }
@@ -176,16 +202,16 @@ async function renderCurrentStage() {
     case 2: return renderStage2()
     case 3: return renderStage3()
     case 4: 
-      // 4단계인 경우 Firebase에서 teamProposal을 먼저 불러옴
-      if (db && appState.teamId && !appState.teamProposal) {
+      // 4단계인 경우 Firebase에서 teamProposal을 먼저 불러옴 (항상 최신 데이터 로드)
+      if (db && appState.teamId) {
         try {
           const teamKey = `team${appState.teamId}`
           const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
           const snapshot = await get(teamProposalRef)
           if (snapshot.exists()) {
             const teamProposalData = snapshot.val()
-            // 데이터가 실제로 있는지 확인 (빈 객체가 아닌지)
-            if (teamProposalData && (teamProposalData.problem || teamProposalData.solution || teamProposalData.reason)) {
+            // 데이터가 실제로 있는지 확인 (빈 객체가 아닌지) - combinedText도 포함
+            if (teamProposalData && (teamProposalData.problem || teamProposalData.solution || teamProposalData.reason || teamProposalData.combinedText)) {
               appState.teamProposal = teamProposalData
             } else {
               // 빈 데이터면 초기화
@@ -1967,10 +1993,22 @@ async function clearAllData() {
 
 // 이벤트 리스너 연결
 function attachEventListeners() {
-  // 0단계: 모둠 및 번호 선택
+  // 0단계: 모둠 및 번호 선택 (0단계에서만 존재하는 요소들)
   const teamSelect = document.getElementById('team-select')
   const memberSelect = document.getElementById('member-select')
   const startBtn = document.getElementById('start-btn')
+  
+  // 0단계가 아닌 경우 이 요소들이 없어도 정상이므로 에러를 출력하지 않음
+  if (appState.currentStage === 0) {
+    if (!teamSelect || !memberSelect || !startBtn) {
+      console.warn('⚠️ 0단계 필수 요소를 찾을 수 없습니다:', { 
+        teamSelect: !!teamSelect, 
+        memberSelect: !!memberSelect, 
+        startBtn: !!startBtn 
+      })
+      return // 0단계인데 필수 요소가 없으면 이벤트 리스너를 설정할 수 없음
+    }
+  }
   
   if (teamSelect && memberSelect && startBtn) {
     // 초기값을 appState에 설정 (이전 값이 표시된 경우)
@@ -2136,8 +2174,8 @@ function attachEventListeners() {
                 const snapshot = await get(teamProposalRef)
                 if (snapshot.exists()) {
                   const teamProposalData = snapshot.val()
-                  // 데이터가 실제로 있는지 확인 (빈 객체가 아닌지)
-                  if (teamProposalData && (teamProposalData.problem || teamProposalData.solution || teamProposalData.reason)) {
+                  // 데이터가 실제로 있는지 확인 (빈 객체가 아닌지) - combinedText도 포함
+                  if (teamProposalData && (teamProposalData.problem || teamProposalData.solution || teamProposalData.reason || teamProposalData.combinedText)) {
                     appState.teamProposal = teamProposalData
                   } else {
                     // 빈 데이터면 초기화
@@ -2249,9 +2287,8 @@ function attachEventListeners() {
         }
       }
     })
-  } else {
-    console.error('필수 요소를 찾을 수 없습니다:', { teamSelect, memberSelect, startBtn })
   }
+  // else 블록 제거: 0단계가 아닌 경우 이 요소들이 없어도 정상
     
     // 관리자 페이지 버튼
     const adminBtn = document.getElementById('admin-btn')
@@ -3246,31 +3283,75 @@ async function combineTeamProposal() {
 
 // AI 피드백 받기 (모둠별)
 async function getAIFeedback() {
+  console.log('🔍 getAIFeedback() 호출됨')
+  
   const feedbackContainer = document.getElementById('ai-feedback-container')
   const feedbackBtn = document.getElementById('get-feedback-btn')
   
-  if (feedbackContainer) {
-    feedbackContainer.innerHTML = '<div class="loading"><div class="spinner"></div><p>피드백을 생성하고 있습니다...</p></div>'
-    feedbackContainer.classList.remove('hidden')
+  console.log('📦 DOM 요소 확인:', {
+    feedbackContainer: !!feedbackContainer,
+    feedbackBtn: !!feedbackBtn
+  })
+  
+  // DOM 요소가 없으면 에러
+  if (!feedbackContainer) {
+    console.error('❌ ai-feedback-container 요소를 찾을 수 없습니다!')
+    alert('피드백 컨테이너를 찾을 수 없습니다. 페이지를 새로고침해주세요.')
+    return
+  }
+  
+  // 버튼 비활성화
+  if (feedbackBtn) {
     feedbackBtn.disabled = true
   }
+  
+  // 로딩 표시
+  feedbackContainer.innerHTML = '<div class="loading"><div class="spinner"></div><p>피드백을 생성하고 있습니다...</p></div>'
+  feedbackContainer.classList.remove('hidden')
   
   const teamProposal = appState.teamProposal || {
     problem: '',
     solution: '',
-    reason: ''
+    reason: '',
+    combinedText: ''
+  }
+  
+  console.log('📝 teamProposal 상태:', {
+    hasProblem: !!teamProposal.problem,
+    hasSolution: !!teamProposal.solution,
+    hasReason: !!teamProposal.reason,
+    hasCombinedText: !!teamProposal.combinedText
+  })
+  
+  // 데이터 검증: combinedText가 있으면 사용, 없으면 problem/solution/reason 확인
+  if (!teamProposal.combinedText) {
+    // combinedText가 없으면 problem, solution, reason이 모두 있어야 함
+    if (!teamProposal.problem || !teamProposal.solution || !teamProposal.reason) {
+      console.warn('⚠️ 데이터 부족:', {
+        problem: !!teamProposal.problem,
+        solution: !!teamProposal.solution,
+        reason: !!teamProposal.reason
+      })
+      feedbackContainer.innerHTML = `<p style="color: red;">⚠️ 먼저 '문장 연결하기' 버튼을 눌러 공약문을 생성해주세요.</p>`
+      if (feedbackBtn) {
+        feedbackBtn.disabled = false
+      }
+      return
+    }
   }
   
   const systemPrompt = `당신은 초등학교 4학년 학생들에게 사회 교과서 내용을 바탕으로 해결방안에 대해 피드백을 주는 친절한 선생님입니다. 
 항상 격려하고, 구체적이고 이해하기 쉬운 말로 설명합니다.`
 
+  // combinedText가 있으면 그것을 사용, 없으면 problem/solution/reason 조합 사용
+  const proposalText = teamProposal.combinedText || 
+    `문제 상황: ${teamProposal.problem}\n해결방안: ${teamProposal.solution}\n이유: ${teamProposal.reason}`
+
   const prompt = `
 초등학교 4학년 학생들이 모둠으로 작성한 해결방안에 대해 피드백을 주세요.
 
 [학생들의 제안]
-문제 상황: ${teamProposal.problem}
-해결방안: ${teamProposal.solution}
-이유: ${teamProposal.reason}
+${proposalText}
 
 [교과서에서 배운 주요 해결방안 예시]
 1. 주차 공간을 효율적으로 활용하기 (예: 시간대별 주차장 개방)
@@ -3287,29 +3368,44 @@ async function getAIFeedback() {
   `
   
   try {
+    console.log('🚀 OpenAI API 호출 시작...')
     const feedback = await callOpenAI(prompt, systemPrompt)
+    console.log('✅ OpenAI API 응답 받음, 길이:', feedback?.length)
     
-    if (feedbackContainer) {
-      feedbackContainer.innerHTML = `
-        <div class="ai-feedback">
-          <h3>🤖 AI 선생님의 피드백</h3>
-          <div class="ai-feedback-content">${feedback.replace(/\n/g, '<br>')}</div>
-        </div>
-      `
-      feedbackContainer.classList.remove('hidden')
-      feedbackContainer.classList.add('question-card')
-      
-      // 모둠 제안에 피드백 저장
-      if (!appState.teamProposal) {
-        appState.teamProposal = {}
-      }
-      appState.teamProposal.aiFeedback = feedback
-      
-      // Firebase에 저장
-      if (db && appState.teamId) {
+    // 피드백이 비어있으면 에러 처리
+    if (!feedback || feedback.trim().length === 0) {
+      console.error('❌ 피드백이 비어있음')
+      throw new Error('피드백이 생성되지 않았습니다.')
+    }
+    
+    console.log('📝 피드백 표시 시작...')
+    // feedbackContainer는 이미 확인했으므로 항상 존재함
+    feedbackContainer.innerHTML = `
+      <div class="ai-feedback">
+        <h3>🤖 AI 선생님의 피드백</h3>
+        <div class="ai-feedback-content">${feedback.replace(/\n/g, '<br>')}</div>
+      </div>
+    `
+    feedbackContainer.classList.remove('hidden')
+    feedbackContainer.classList.add('question-card')
+    console.log('✅ 피드백 표시 완료')
+    
+    // 모둠 제안에 피드백 저장
+    if (!appState.teamProposal) {
+      appState.teamProposal = {}
+    }
+    appState.teamProposal.aiFeedback = feedback
+    
+    // Firebase에 저장
+    if (db && appState.teamId) {
+      try {
         const teamKey = `team${appState.teamId}`
         const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
         await update(teamProposalRef, { aiFeedback: feedback })
+        console.log('✅ Firebase에 피드백 저장 완료')
+      } catch (firebaseError) {
+        console.error('⚠️ Firebase 저장 실패 (계속 진행):', firebaseError)
+        // Firebase 저장 실패해도 UI는 업데이트됨
       }
     }
     
@@ -3338,14 +3434,42 @@ async function getAIFeedback() {
       }, 100)
     }
     
-    // updateTeamProposalUI도 호출하여 UI 동기화
-    updateTeamProposalUI(appState.teamProposal)
-  } catch (error) {
-    if (feedbackContainer) {
-      feedbackContainer.innerHTML = `<p style="color: red;">피드백 생성 중 오류가 발생했습니다: ${error.message}</p>`
+    // updateTeamProposalUI도 호출하여 UI 동기화 (피드백이 성공적으로 생성된 후에만)
+    if (appState.teamProposal && appState.teamProposal.aiFeedback) {
+      updateTeamProposalUI(appState.teamProposal)
     }
-  } finally {
-    if (feedbackBtn) feedbackBtn.disabled = false
+  } catch (error) {
+    console.error('❌ AI 피드백 생성 오류:', error)
+    console.error('오류 상세:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    })
+    
+    // feedbackContainer는 이미 확인했으므로 항상 존재함
+    feedbackContainer.innerHTML = `
+      <div class="question-card" style="background: #ffebee; border-left: 5px solid #f44336;">
+        <h3 style="color: #c62828; margin-bottom: 10px;">⚠️ 피드백 생성 오류</h3>
+        <p style="color: #b71c1c;">피드백 생성 중 오류가 발생했습니다: ${error.message}</p>
+        <p style="color: #b71c1c; margin-top: 10px; font-size: 0.9em;">다시 시도해주세요.</p>
+        <p style="color: #b71c1c; margin-top: 5px; font-size: 0.8em;">오류가 계속되면 개발자에게 문의해주세요.</p>
+      </div>
+    `
+    feedbackContainer.classList.remove('hidden')
+    
+    // 에러 발생 시 버튼 다시 활성화
+    if (feedbackBtn) {
+      feedbackBtn.disabled = false
+      feedbackBtn.style.display = 'block'
+      feedbackBtn.style.visibility = 'visible'
+      feedbackBtn.classList.remove('hidden')
+    }
+    // 다음 단계 버튼은 숨김 유지 (피드백이 없으면 다음 단계로 갈 수 없음)
+    const nextStageBtn = document.getElementById('next-stage-btn')
+    if (nextStageBtn) {
+      nextStageBtn.classList.add('hidden')
+      nextStageBtn.style.display = 'none'
+    }
   }
 }
 
