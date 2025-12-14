@@ -1970,9 +1970,30 @@ function attachEventListeners() {
       // 해당 사용자의 진행 상태 복원 시도
       const hasProgress = loadProgress(appState.teamId, appState.memberNumber)
       
+      // 투표 상태 먼저 확인
+      const votingStatus = await getVotingStatus()
+      
+      // Firebase에서 해당 모둠의 투표 데이터 확인 (투표 종료 시 자동 전환을 위해)
+      let hasTeamVote = false
+      if (votingStatus === 'closed') {
+        try {
+          const votes = await loadVotesFromFirebase()
+          const teamName = `${appState.teamId}모둠`
+          hasTeamVote = votes[teamName] && Object.keys(votes[teamName]).length > 0
+        } catch (error) {
+          console.error('투표 데이터 확인 실패:', error)
+        }
+      }
+      
       if (hasProgress && appState.currentStage > 0) {
           // 진행 상태가 있으면 해당 단계로 복원
           console.log(`${appState.teamId}모둠 ${appState.memberNumber}번의 진행 상태 복원: ${appState.currentStage}단계`)
+          
+          // 투표가 종료되었고 5단계 이상 완료했다면 6단계로 자동 전환
+          if (votingStatus === 'closed' && appState.currentStage >= 5) {
+            console.log('투표가 종료되었습니다. 5단계 이상 완료한 학생을 6단계로 자동 전환합니다.')
+            appState.currentStage = 6
+          }
           
           // CSV 데이터가 필요한 단계인 경우 로드
           if (appState.currentStage >= 1 && appState.currentStage <= 4) {
@@ -2014,13 +2035,6 @@ function attachEventListeners() {
             }
           }
           
-          // 투표가 종료되었고 5단계까지 완료했다면 6단계로 자동 전환
-          const votingStatus = await getVotingStatus()
-          if (votingStatus === 'closed' && appState.currentStage === 5) {
-            console.log('투표가 종료되었습니다. 6단계로 자동 전환합니다.')
-            appState.currentStage = 6
-          }
-          
           saveProgress() // 현재 사용자 정보 저장
           await renderApp()
           
@@ -2055,6 +2069,18 @@ function attachEventListeners() {
             }, 100)
           }
         } else {
+          // 진행 상태가 없지만, 투표가 종료되었고 해당 모둠이 투표를 완료했다면 6단계로 전환
+          if (votingStatus === 'closed' && hasTeamVote) {
+            console.log(`${appState.teamId}모둠 ${appState.memberNumber}번: 투표가 종료되었고 투표 완료 확인. 6단계로 자동 전환합니다.`)
+            appState.currentStage = 6
+            saveProgress()
+            await renderApp()
+            setTimeout(() => {
+              generateSpeech()
+            }, 500)
+            return // 여기서 종료
+          }
+          
           // 진행 상태가 없으면 1단계부터 시작
           console.log(`${appState.teamId}모둠 ${appState.memberNumber}번의 새 시작: 1단계`)
           
