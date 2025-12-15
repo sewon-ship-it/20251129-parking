@@ -1413,6 +1413,26 @@ function setupRealtimeUpdates() {
         setTimeout(() => {
           generateSpeech()
         }, 500)
+      } else if (votingStatus === 'open' && appState.currentStage === 6) {
+        // 투표가 재개되고 현재 6단계에 있으면 5단계로 돌아가서 새로운 제안에 투표할 수 있게 함
+        console.log('투표 재개 감지: 6단계에서 5단계로 돌아갑니다. 기존 투표를 초기화합니다.')
+        appState.currentStage = 5
+        // 기존 투표 데이터 초기화 (모든 제안에 대해 새로 투표)
+        appState.votes = {}
+        // Firebase에서도 모둠 투표 데이터 초기화
+        if (db && appState.teamId) {
+          try {
+            const teamKey = `team${appState.teamId}`
+            const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
+            await set(teamVotesRef, null)
+            console.log(`${teamKey}의 투표 데이터를 초기화했습니다.`)
+          } catch (error) {
+            console.error('투표 데이터 초기화 실패:', error)
+          }
+        }
+        saveProgress()
+        await renderApp()
+        attachEventListeners()
       } else if (votingStatus === 'open') {
         // 투표가 재개되면 화면만 업데이트
         await renderApp()
@@ -1604,12 +1624,28 @@ async function renderStage7() {
   const myProposal = myProposalIndex >= 0 ? proposals[myProposalIndex] : null
   
   if (!myProposal) {
+    // 제안이 없는 모둠은 안내 문구만 표시하고 7단계는 보이지 않게 함
     return `
       <div class="stage-container">
         <div class="stage-header">
           <h1 class="stage-title">📊 7단계: ${teamName} 대시보드</h1>
         </div>
-        <p style="text-align: center; padding: 40px;">제안 정보를 찾을 수 없습니다.</p>
+        
+        <div class="question-card" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-left: 5px solid var(--winter-blue-500); margin-bottom: 30px; text-align: center; padding: 40px;">
+          <div style="font-size: 4em; margin-bottom: 20px;">ℹ️</div>
+          <h3 style="color: var(--winter-blue-700); margin-bottom: 15px; font-size: 1.5em;">제안을 제출하지 않았습니다</h3>
+          <p style="color: var(--winter-blue-900); line-height: 2; font-size: 1.1em; margin-bottom: 10px;">
+            ${teamName}은(는) 제안을 제출하지 않아<br>
+            대시보드를 확인할 수 없습니다.
+          </p>
+          <p style="color: var(--winter-blue-700); font-size: 1em; margin-top: 20px; font-weight: 600;">
+            💡 교사님이 투표를 재개하면 1단계부터 시작할 수 있습니다.
+          </p>
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-top: 30px;">
+          <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
+        </div>
       </div>
     `
   }
@@ -2503,8 +2539,27 @@ function attachEventListeners() {
                 saveProgress()
               }
             } else if (teamCurrentStage >= 6) {
-              // 6단계 이상: 모둠이 6단계 이상에 있으면 이 학생도 같은 단계로 이동
-              if (!hasProgress || appState.currentStage < teamCurrentStage) {
+              // 6단계 이상: 모둠이 6단계 이상에 있으면
+              // 투표가 재개된 상태이면 5단계로 돌아가서 새로운 제안에 투표할 수 있게 함
+              if (votingStatus === 'open') {
+                console.log(`${appState.teamId}모둠이 ${teamCurrentStage}단계에 있지만 투표가 재개되어 5단계로 돌아갑니다. 기존 투표를 초기화합니다.`)
+                appState.currentStage = 5
+                // 기존 투표 데이터 초기화 (모든 제안에 대해 새로 투표)
+                appState.votes = {}
+                // Firebase에서도 모둠 투표 데이터 초기화
+                if (db && appState.teamId) {
+                  try {
+                    const teamKey = `team${appState.teamId}`
+                    const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
+                    await set(teamVotesRef, null)
+                    console.log(`${teamKey}의 투표 데이터를 초기화했습니다.`)
+                  } catch (error) {
+                    console.error('투표 데이터 초기화 실패:', error)
+                  }
+                }
+                saveProgress()
+              } else if (!hasProgress || appState.currentStage < teamCurrentStage) {
+                // 투표가 종료된 상태이면 6단계 이상으로 이동
                 const previousStage = appState.currentStage
                 appState.currentStage = teamCurrentStage
                 console.log(`${appState.teamId}모둠이 ${teamCurrentStage}단계에 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 ${teamCurrentStage}단계로 이동합니다.`)
@@ -2538,12 +2593,32 @@ function attachEventListeners() {
         }
       }
       
-      // 투표 종료 상태 확인 및 단계 조정 (모둠 진행 상태 복원 후에도 확인)
+      // 투표 상태 확인 및 단계 조정 (모둠 진행 상태 복원 후에도 확인)
       if (votingStatus === 'closed') {
         // 투표가 종료된 상태에서는 5단계 접근 불가, 6단계나 7단계로 이동
         if (appState.currentStage === 5) {
           console.log('투표가 종료되어 5단계에서 6단계로 이동합니다.')
           appState.currentStage = 6
+          saveProgress()
+        }
+      } else if (votingStatus === 'open') {
+        // 투표가 재개된 상태에서는 6단계에서 5단계로 돌아가서 새로운 제안에 투표할 수 있게 함
+        if (appState.currentStage === 6 || appState.currentStage === 7) {
+          console.log('투표가 재개되어 5단계로 돌아갑니다. 기존 투표를 초기화합니다.')
+          appState.currentStage = 5
+          // 기존 투표 데이터 초기화 (모든 제안에 대해 새로 투표)
+          appState.votes = {}
+          // Firebase에서도 모둠 투표 데이터 초기화
+          if (db && appState.teamId) {
+            try {
+              const teamKey = `team${appState.teamId}`
+              const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
+              await set(teamVotesRef, null)
+              console.log(`${teamKey}의 투표 데이터를 초기화했습니다.`)
+            } catch (error) {
+              console.error('투표 데이터 초기화 실패:', error)
+            }
+          }
           saveProgress()
         }
       }
@@ -2661,7 +2736,19 @@ function attachEventListeners() {
           return // 여기서 종료
         }
         
-        // 진행 상태가 없으면 1단계부터 시작
+        // 투표가 종료되었고 진행 상태가 없으면 결과 보기(6단계)로 이동
+        if (votingStatus === 'closed') {
+          console.log(`${appState.teamId}모둠: 투표가 종료되었습니다. 결과 보기(6단계)로 이동합니다.`)
+          appState.currentStage = 6
+          saveProgress()
+          await renderApp()
+          setTimeout(() => {
+            generateSpeech()
+          }, 500)
+          return // 여기서 종료
+        }
+        
+        // 진행 상태가 없고 투표가 진행 중이면 1단계부터 시작
         console.log(`${appState.teamId}모둠의 새 시작: 1단계`)
         
         // 진행 상태 초기화
@@ -4310,6 +4397,26 @@ function setupGlobalVotingStatusListener() {
         setTimeout(() => {
           generateSpeech()
         }, 500)
+      } else if (votingStatus === 'open' && appState.currentStage === 6) {
+        // 투표가 재개되고 현재 6단계에 있으면 5단계로 돌아가서 새로운 제안에 투표할 수 있게 함
+        console.log('[전역 리스너] 투표 재개 감지: 6단계에서 5단계로 돌아갑니다. 기존 투표를 초기화합니다.')
+        appState.currentStage = 5
+        // 기존 투표 데이터 초기화 (모든 제안에 대해 새로 투표)
+        appState.votes = {}
+        // Firebase에서도 모둠 투표 데이터 초기화
+        if (db && appState.teamId) {
+          try {
+            const teamKey = `team${appState.teamId}`
+            const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
+            await set(teamVotesRef, null)
+            console.log(`${teamKey}의 투표 데이터를 초기화했습니다.`)
+          } catch (error) {
+            console.error('투표 데이터 초기화 실패:', error)
+          }
+        }
+        saveProgress()
+        await renderApp()
+        attachEventListeners()
       }
     }
   }, (error) => {
