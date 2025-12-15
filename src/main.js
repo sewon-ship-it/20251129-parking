@@ -1570,6 +1570,9 @@ async function renderStage6() {
           <p style="color: #bf360c; line-height: 1.8; margin-top: 15px; font-weight: 600;">
             ⚠️ ${appState.teamId}모둠은 이번 투표에 참가하지 않았습니다. 결과만 확인할 수 있습니다.
           </p>
+          <p style="color: #bf360c; line-height: 1.8; margin-top: 10px;">
+            💡 참가를 원한다면 선생님께 투표 재개를 눌러달라고 하세요.
+          </p>
         ` : ''}
       </div>
       
