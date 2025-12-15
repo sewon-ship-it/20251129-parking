@@ -3024,6 +3024,29 @@ function attachEventListeners() {
   const prevStageBtn = document.getElementById('prev-stage-btn')
   if (prevStageBtn) {
     prevStageBtn.addEventListener('click', async () => {
+      // 투표 종료 상태에서 4단계, 5단계, 1~3단계로 돌아가는 것 차단
+      const votingStatus = await getVotingStatus()
+      if (votingStatus === 'closed') {
+        if (appState.currentStage === 7) {
+          // 7단계에서 이전 버튼 클릭 시 6단계로만 이동 가능
+          appState.currentStage = 6
+          saveProgress()
+          await renderApp()
+          setTimeout(() => {
+            generateSpeech()
+          }, 500)
+          return
+        } else if (appState.currentStage === 6) {
+          // 6단계에서 이전 버튼 클릭 시 차단 (투표 종료 상태이므로)
+          alert('투표가 종료되어 이전 단계로 돌아갈 수 없습니다.\n\n결과만 확인할 수 있습니다.')
+          return
+        } else if (appState.currentStage === 4 || appState.currentStage === 5) {
+          // 4단계나 5단계에서 이전 버튼 클릭 시 차단 (투표 종료 상태이므로)
+          alert('투표가 종료되어 이전 단계로 돌아갈 수 없습니다.\n\n결과만 확인할 수 있습니다.')
+          return
+        }
+      }
+      
       if (appState.currentStage > 0) {
         appState.currentStage--
         saveProgress() // 진행 상태 저장
