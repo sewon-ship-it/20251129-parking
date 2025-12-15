@@ -815,11 +815,11 @@ async function renderStage5() {
         </div>
         <p style="text-align: center; font-size: 1.2em; padding: 40px;">
           다른 친구들의 제안이 아직 없습니다. 잠시만 기다려주세요.
-        </p>
+    </p>
         <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
           <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
         </div>
-      </div>
+  </div>
     `
   }
   
@@ -845,6 +845,10 @@ async function renderStage5() {
           <h3 style="color: #2e7d32; margin-bottom: 10px;">🟢 투표 진행 중</h3>
           <p style="color: #1b5e20; line-height: 1.8;">
             현재 투표가 진행 중입니다. 친구들의 해결방안을 평가해주세요!
+          </p>
+          <p style="color: #2e7d32; line-height: 1.8; margin-top: 15px; font-size: 0.95em; font-weight: 600; background: rgba(255, 255, 255, 0.5); padding: 10px; border-radius: 8px;">
+            📊 현재 ${allProposals.length}개 모둠이 공약을 제출했습니다 (전체 6개 모둠)
+            ${allProposals.length < 6 ? '<br>💡 다른 모둠이 아직 공약을 제출 중일 수 있습니다. 교사님이 투표 종료를 누르면 그 시점의 제안들 기준으로 결과가 확정됩니다.' : ''}
           </p>
         </div>
       `}
@@ -950,6 +954,9 @@ async function renderStage5() {
   setTimeout(() => {
     setupRealtimeUpdates()
     setupTeamVotesRealtimeSync() // 모둠 투표 실시간 동기화
+    checkVotingComplete().catch(error => {
+      console.error('투표 완료 확인 실패:', error)
+    }) // 초기 투표 완료 상태 확인
   }, 100)
 }
 
@@ -1056,8 +1063,8 @@ function updateTeamProposalUI(teamProposal) {
     const isFocused = document.activeElement === problemInput
     const recentlyChanged = (now - lastInputTime.problem) < INPUT_PROTECTION_TIME
     if (!isFocused && !recentlyChanged) {
-      problemInput.value = teamProposal.problem || ''
-    }
+    problemInput.value = teamProposal.problem || ''
+  }
   }
   
   // solution 필드 업데이트
@@ -1065,8 +1072,8 @@ function updateTeamProposalUI(teamProposal) {
     const isFocused = document.activeElement === solutionInput
     const recentlyChanged = (now - lastInputTime.solution) < INPUT_PROTECTION_TIME
     if (!isFocused && !recentlyChanged) {
-      solutionInput.value = teamProposal.solution || ''
-    }
+    solutionInput.value = teamProposal.solution || ''
+  }
   }
   
   // reason 필드 업데이트
@@ -1074,7 +1081,7 @@ function updateTeamProposalUI(teamProposal) {
     const isFocused = document.activeElement === reasonInput
     const recentlyChanged = (now - lastInputTime.reason) < INPUT_PROTECTION_TIME
     if (!isFocused && !recentlyChanged) {
-      reasonInput.value = teamProposal.reason || ''
+    reasonInput.value = teamProposal.reason || ''
     }
   }
   if (combinedText && teamProposal.combinedText) {
@@ -1279,8 +1286,10 @@ function setupTeamVotesRealtimeSync() {
       // UI 업데이트 (선택된 버튼 표시)
       updateVotingUI(teamVotes)
       
-      // 투표 완료 상태 확인
-      checkVotingComplete()
+      // 투표 완료 상태 확인 (비동기)
+      checkVotingComplete().catch(error => {
+        console.error('투표 완료 확인 실패:', error)
+      })
     }
   }, (error) => {
     console.error('모둠 투표 실시간 동기화 오류:', error)
@@ -1331,14 +1340,21 @@ function setupRealtimeUpdates() {
         ...proposalsData[key]
       }))
       
-      appState.allProposals = proposals
+        appState.allProposals = proposals
       
       // 5단계에 있으면 실시간으로 화면 업데이트
+      // 새로운 제안이 추가되면 자동으로 표시되고, 투표할 수 있게 함
       if (appState.currentStage === 5) {
         renderApp()
         attachEventListeners()
+        // 새로운 제안이 추가되면 투표 완료 상태 다시 확인
+        setTimeout(() => {
+          checkVotingComplete().catch(error => {
+            console.error('투표 완료 확인 실패:', error)
+          })
+        }, 200)
       }
-    } else {
+      } else {
       // 제안 데이터가 없으면 빈 배열로 설정
       appState.allProposals = []
       
@@ -1346,6 +1362,12 @@ function setupRealtimeUpdates() {
       if (appState.currentStage === 5) {
         renderApp()
         attachEventListeners()
+        // 새로운 제안이 추가되면 투표 완료 상태 다시 확인
+        setTimeout(() => {
+          checkVotingComplete().catch(error => {
+            console.error('투표 완료 확인 실패:', error)
+          })
+        }, 200)
       }
     }
   }, (error) => {
@@ -1371,13 +1393,13 @@ function setupRealtimeUpdates() {
           generateSpeech()
         }, 500)
       } else {
-        await renderApp()
-        attachEventListeners()
-        
-        if (votingStatus === 'closed' && appState.currentStage === 6) {
-          setTimeout(() => {
-            generateSpeech()
-          }, 500)
+      await renderApp()
+      attachEventListeners()
+      
+      if (votingStatus === 'closed' && appState.currentStage === 6) {
+        setTimeout(() => {
+          generateSpeech()
+        }, 500)
         }
       }
     }
@@ -1724,11 +1746,62 @@ function setupDashboardRealtimeSync() {
   appState.realtimeListeners.push(unsubscribe)
 }
 
+// 투표 완료 상태 확인 (교사 페이지용)
+function checkAllVotesCompleted(proposals, votes) {
+  if (proposals.length === 0) return { allCompleted: false, message: '제출된 공약이 없습니다.' }
+  
+  // 현재 제출된 모둠 수 (결석한 모둠 제외)
+  const submittedTeamCount = proposals.length
+  
+  // 각 제안에 대해 투표를 완료한 모둠 수 확인
+  let allCompleted = true
+  const incompleteProposals = []
+  
+  proposals.forEach((proposal, index) => {
+    // 이 제안에 투표를 완료한 모둠 수 확인
+    let completedTeamCount = 0
+    
+    Object.keys(votes).forEach(teamName => {
+      const teamVote = votes[teamName]
+      if (teamVote && teamVote[index]) {
+        const vote = teamVote[index]
+        // 모든 기준에 투표했는지 확인
+        if (vote.effect && vote.cost && vote.practical && vote.harmless) {
+          completedTeamCount++
+        }
+      }
+    })
+    
+    // 본인 모둠은 자기 제안에 투표하지 않으므로 (제출된 모둠 수 - 1)개 모둠이 투표해야 함
+    const requiredVotes = submittedTeamCount - 1
+    if (completedTeamCount < requiredVotes) {
+      allCompleted = false
+      const proposalTeamId = proposal.teamId || proposal.name.match(/(\d+)모둠/)?.[1] || '?'
+      incompleteProposals.push(`${proposalTeamId}모둠`)
+    }
+  })
+  
+  if (allCompleted) {
+    return { 
+      allCompleted: true, 
+      message: `✅ 모든 모둠이 현재 제출된 공약들(${submittedTeamCount}개)에 투표를 완료했습니다. 투표를 종료할 수 있습니다.` 
+    }
+  } else {
+    return { 
+      allCompleted: false, 
+      message: `⏳ 아직 투표가 완료되지 않았습니다. (${submittedTeamCount}개 공약 제출, ${incompleteProposals.length > 0 ? incompleteProposals.join(', ') + ' 제안에 투표 진행 중' : '투표 진행 중'})` 
+    }
+  }
+}
+
 // 8단계: 관리자 페이지
 async function renderAdminStage() {
   const proposals = await loadProposalsFromFirebase()
   const votes = await loadVotesFromFirebase()
   const votingStatus = await getVotingStatus()
+  
+  // 투표 완료 상태 확인
+  const voteStatus = checkAllVotesCompleted(proposals, votes)
   
   // 모든 학생의 제안 요약
   const proposalsSummary = proposals.map((proposal, index) => {
@@ -1736,15 +1809,24 @@ async function renderAdminStage() {
     let totalEffect = 0, totalCost = 0, totalPractical = 0, totalHarmless = 0
     let voteCount = 0
     
-    Object.keys(votes).forEach(studentName => {
-      const studentVote = votes[studentName]
-      if (studentVote && studentVote[index]) {
-        const vote = studentVote[index]
-        totalEffect += vote.effect || 0
-        totalCost += vote.cost || 0
-        totalPractical += vote.practical || 0
-        totalHarmless += vote.harmless || 0
-        voteCount++
+    // 투표 데이터 구조: { [teamName]: { [proposalIndex]: { effect, cost, practical, harmless } } }
+    // teamName은 "5모둠", "6모둠" 등
+    Object.keys(votes).forEach(teamName => {
+      const teamVote = votes[teamName]
+      if (teamVote && typeof teamVote === 'object') {
+        // teamVote는 { [proposalIndex]: { effect, cost, practical, harmless } } 형태
+        // proposalIndex는 allProposals 배열의 인덱스
+        // proposals와 allProposals는 같은 순서이므로 index를 그대로 사용 가능
+        if (teamVote[index] || teamVote[String(index)]) {
+          const vote = teamVote[index] || teamVote[String(index)]
+          if (vote && (vote.effect || vote.cost || vote.practical || vote.harmless)) {
+            totalEffect += vote.effect || 0
+            totalCost += vote.cost || 0
+            totalPractical += vote.practical || 0
+            totalHarmless += vote.harmless || 0
+            voteCount++
+          }
+        }
       }
     })
     
@@ -1787,7 +1869,9 @@ async function renderAdminStage() {
           🔄 데이터 새로고침
         </button>
         ${votingStatus === 'open' ? `
-          <button class="btn" id="close-voting-btn" style="background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white;">
+          <button class="btn" id="close-voting-btn" 
+                  style="background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; ${voteStatus.allCompleted ? '' : 'opacity: 0.6; cursor: not-allowed;'}"
+                  ${voteStatus.allCompleted ? '' : 'disabled title="모든 모둠이 투표를 완료해야 합니다."'}>
             ⏰ 투표 종료 및 결과 확정
           </button>
         ` : `
@@ -1817,8 +1901,17 @@ async function renderAdminStage() {
         <div class="question-card" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-left: 5px solid #4caf50; margin-bottom: 30px;">
           <h3 style="color: #2e7d32; margin-bottom: 10px;">🟢 투표 진행 중</h3>
           <p style="color: #1b5e20; line-height: 1.8;">
-            학생들이 투표를 진행하고 있습니다. 투표를 종료하려면 "투표 종료 및 결과 확정" 버튼을 클릭하세요.
+            ${voteStatus.message}
           </p>
+          ${voteStatus.allCompleted ? `
+            <p style="color: #2e7d32; line-height: 1.8; margin-top: 15px; font-weight: 600; background: rgba(255, 255, 255, 0.5); padding: 10px; border-radius: 8px;">
+              ✅ 모든 모둠이 투표를 완료했습니다. "투표 종료 및 결과 확정" 버튼을 클릭하여 결과를 확정할 수 있습니다.
+            </p>
+          ` : `
+            <p style="color: #1b5e20; line-height: 1.8; margin-top: 15px; font-size: 0.95em;">
+              💡 모든 모둠이 현재 제출된 공약들에 투표를 완료하면 "투표 종료 및 결과 확정" 버튼이 활성화됩니다.
+            </p>
+          `}
         </div>
       `}
       
@@ -2106,7 +2199,7 @@ function attachEventListeners() {
   // 0단계: 모둠 선택 (0단계에서만 존재하는 요소들)
   const teamSelect = document.getElementById('team-select')
   const startBtn = document.getElementById('start-btn')
-
+  
   // 0단계가 아닌 경우 이 요소들이 없어도 정상이므로 에러를 출력하지 않음
   // 0단계인 경우에만 이 요소들이 필요함
   if (appState.currentStage === 0) {
@@ -2146,7 +2239,7 @@ function attachEventListeners() {
     }
     
     // 초기 버튼 상태 설정
-    updateStartButton()
+      updateStartButton()
     
     startBtn.addEventListener('click', async () => {
       // DOM에서 직접 값을 읽어옴 (더 안전함)
@@ -2229,7 +2322,7 @@ function attachEventListeners() {
         // Firebase에서 teamProposal 확인
         if (db && appState.teamId) {
           try {
-            const teamKey = `team${appState.teamId}`
+        const teamKey = `team${appState.teamId}`
             const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
             const teamSnapshot = await get(teamProposalRef)
             if (teamSnapshot.exists()) {
@@ -2313,9 +2406,9 @@ function attachEventListeners() {
           }
         } catch (error) {
           console.error('제안 데이터 확인 실패:', error)
+          }
         }
-      }
-      
+        
       // 4단계 이후는 Firebase에서 모둠 진행 상태 확인하여 동기화
       // 같은 모둠의 모든 학생은 같은 진행 상태를 공유해야 하므로, Firebase를 항상 확인
       if (db && appState.teamId) {
@@ -2778,14 +2871,14 @@ function attachEventListeners() {
             renderCharts()
           }, 100)
           // 저장된 답변 복원과 완료 확인은 renderApp() 후 즉시 수행 (DOM이 준비된 후)
-          restoreQuestionAnswers()
-          checkStage1Complete()
+            restoreQuestionAnswers()
+            checkStage1Complete()
         } else if (appState.currentStage === 2) {
           setTimeout(() => {
             renderCharts()
           }, 100)
-          restoreQuestionAnswers()
-          checkStage2Complete()
+            restoreQuestionAnswers()
+            checkStage2Complete()
         } else if (appState.currentStage === 3) {
           checkStage3Complete()
         }
@@ -2856,9 +2949,9 @@ function attachEventListeners() {
   const proposalSolution = document.getElementById('proposal-solution')
   const proposalReason = document.getElementById('proposal-reason')
   // 4단계: 모둠 제안 실시간 동기화 설정 (항상 실행)
-  if (appState.currentStage === 4) {
-    setupTeamProposalRealtimeSync()
-  }
+    if (appState.currentStage === 4) {
+      setupTeamProposalRealtimeSync()
+    }
   
   const combineBtn = document.getElementById('combine-btn')
   
@@ -2979,8 +3072,10 @@ function attachEventListeners() {
         saveTeamVoteRealtime(proposalIndex, criteria, score)
       }
       
-      // 모든 투표가 완료되었는지 확인
-      checkVotingComplete()
+      // 모든 투표가 완료되었는지 확인 (비동기)
+      checkVotingComplete().catch(error => {
+        console.error('투표 완료 확인 실패:', error)
+      })
     })
   })
   
@@ -3431,6 +3526,20 @@ async function combineTeamProposal() {
       combinedProposalDiv.classList.remove('hidden')
     }
     
+    // AI 피드백 컨테이너 생성 (없으면 생성)
+    let feedbackContainer = document.getElementById('ai-feedback-container')
+    if (!feedbackContainer) {
+      const combinedProposalContainer = document.getElementById('combined-proposal')
+      if (combinedProposalContainer) {
+        const containerDiv = document.createElement('div')
+        containerDiv.id = 'ai-feedback-container'
+        containerDiv.className = 'hidden'
+        containerDiv.style.marginTop = '20px'
+        combinedProposalContainer.appendChild(containerDiv)
+        feedbackContainer = document.getElementById('ai-feedback-container')
+      }
+    }
+    
     // AI 피드백 받기 버튼 항상 생성 및 표시 (aiFeedback이 없을 때만)
     // 버튼이 이미 DOM에 있는지 확인
     let getFeedbackBtn = document.getElementById('get-feedback-btn')
@@ -3659,24 +3768,24 @@ ${proposalText}
     
     console.log('📝 피드백 표시 시작...')
     // feedbackContainer는 이미 확인했으므로 항상 존재함
-    feedbackContainer.innerHTML = `
-      <div class="ai-feedback">
-        <h3>🤖 AI 선생님의 피드백</h3>
-        <div class="ai-feedback-content">${feedback.replace(/\n/g, '<br>')}</div>
-      </div>
-    `
+      feedbackContainer.innerHTML = `
+        <div class="ai-feedback">
+          <h3>🤖 AI 선생님의 피드백</h3>
+          <div class="ai-feedback-content">${feedback.replace(/\n/g, '<br>')}</div>
+        </div>
+      `
     feedbackContainer.classList.remove('hidden')
     feedbackContainer.classList.add('question-card')
     console.log('✅ 피드백 표시 완료')
-    
-    // 모둠 제안에 피드백 저장
-    if (!appState.teamProposal) {
-      appState.teamProposal = {}
-    }
-    appState.teamProposal.aiFeedback = feedback
-    
-    // Firebase에 저장
-    if (db && appState.teamId) {
+      
+      // 모둠 제안에 피드백 저장
+      if (!appState.teamProposal) {
+        appState.teamProposal = {}
+      }
+      appState.teamProposal.aiFeedback = feedback
+      
+      // Firebase에 저장
+      if (db && appState.teamId) {
       try {
         const teamKey = `team${appState.teamId}`
         const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
@@ -3753,19 +3862,34 @@ ${proposalText}
 }
 
 // 투표 완료 확인
-function checkVotingComplete() {
-  const proposals = appState.allProposals.length > 0 
+async function checkVotingComplete() {
+  const allProposals = appState.allProposals.length > 0 
     ? appState.allProposals 
     : JSON.parse(localStorage.getItem('allProposals') || '[]')
+  
+  // 본인 모둠의 제안 제외 (자기 자신에게 투표할 수 없음)
+  const proposals = allProposals.filter(p => p.teamId !== appState.teamId)
   
   const submitBtn = document.getElementById('submit-votes-btn')
   if (!submitBtn) return
   
+  if (proposals.length === 0) {
+    // 투표할 제안이 없으면 버튼 비활성화
+    submitBtn.disabled = true
+    return
+  }
+  
+  // 현재 존재하는 모든 제안에 대해 투표 완료 여부 확인
+  // 새로운 제안이 추가되어도 실시간으로 확인
   let allComplete = true
-  proposals.forEach((proposal, index) => {
-    const votes = appState.votes[index] || {}
-    if (!votes.effect || !votes.cost || !votes.practical || !votes.harmless) {
-      allComplete = false
+  proposals.forEach((proposal) => {
+    // allProposals에서의 실제 인덱스 찾기
+    const actualIndex = allProposals.findIndex(p => p.id === proposal.id || (p.teamId === proposal.teamId && p.name === proposal.name))
+    if (actualIndex >= 0) {
+      const votes = appState.votes[actualIndex] || {}
+      if (!votes.effect || !votes.cost || !votes.practical || !votes.harmless) {
+        allComplete = false
+      }
     }
   })
   
@@ -3784,15 +3908,34 @@ async function submitVotes() {
   // 모둠 인원 확인
   const activeMemberCount = await getActiveTeamMemberCount()
   
+  // 현재 제출된 제안 수 확인
+  const allProposals = appState.allProposals.length > 0 
+    ? appState.allProposals 
+    : await loadProposalsFromFirebase()
+  const submittedCount = allProposals.length
+  const totalTeams = 6
+  
   // 확인 창 표시
   let confirmMessage = `투표를 완료하시겠습니까?\n\n모둠별로 토의하신 결과입니까?`
+  
+  // 다른 모둠이 아직 공약을 제출하지 않았을 수 있다는 안내 추가
+  if (submittedCount < totalTeams) {
+    confirmMessage += `\n\n📊 현재 ${submittedCount}개 모둠이 공약을 제출했습니다 (전체 ${totalTeams}개 모둠)`
+    confirmMessage += `\n💡 다른 모둠이 아직 공약을 제출 중일 수 있습니다.`
+    confirmMessage += `\n교사님이 투표 종료를 누르면 그 시점의 제안들 기준으로 결과가 확정됩니다.`
+  }
   
   if (activeMemberCount === 1) {
     confirmMessage = `⚠️ 모둠 내 1명만 진행하는 것 맞습니까?\n\n` +
       `현재 ${appState.teamId}모둠에서 진행 중인 인원: 1명\n\n` +
       `만약 모둠에 다른 친구들이 출석했다면, 함께 토의하고 투표하는 것이 좋습니다.\n` +
-      `정말 투표를 완료하시겠습니까?\n\n` +
-      `확인 = 투표 완료\n취소 = 다시 검토하기`
+      `정말 투표를 완료하시겠습니까?\n\n`
+    if (submittedCount < totalTeams) {
+      confirmMessage += `📊 현재 ${submittedCount}개 모둠이 공약을 제출했습니다 (전체 ${totalTeams}개 모둠)\n`
+      confirmMessage += `💡 다른 모둠이 아직 공약을 제출 중일 수 있습니다.\n`
+      confirmMessage += `교사님이 투표 종료를 누르면 그 시점의 제안들 기준으로 결과가 확정됩니다.\n\n`
+    }
+    confirmMessage += `확인 = 투표 완료\n취소 = 다시 검토하기`
   } else {
     confirmMessage += `\n\n확인 = 투표 완료\n취소 = 다시 검토하기`
   }
@@ -3806,13 +3949,12 @@ async function submitVotes() {
   if (!db) {
     // Firebase가 없으면 localStorage에만 저장
     localStorage.setItem('votes', JSON.stringify(appState.votes))
-    alert('투표가 완료되었습니다! (로컬 저장)')
-    appState.currentStage = 6
+    alert('투표가 완료되었습니다! (로컬 저장)\n\n다른 모둠이 공약을 제출하면 자동으로 표시되며, 추가로 투표할 수 있습니다.\n교사님이 투표 종료를 누르면 그 시점의 제안들 기준으로 결과가 확정됩니다.')
+    
+    // 5단계에 머물러서 새로운 제안이 추가되면 투표할 수 있게 함
+    // currentStage는 그대로 5로 유지
     saveProgress()
     await renderApp()
-    setTimeout(() => {
-      generateSpeech()
-    }, 500)
     return
   }
   
@@ -3835,26 +3977,26 @@ async function submitVotes() {
     // updatedVotes는 { [teamName]: { [proposalIndex]: {...} } } 형태이므로
     // appState.votes는 그대로 유지 (이미 { [proposalIndex]: {...} } 형태)
     
-    alert('투표가 완료되었습니다!')
-    appState.currentStage = 6
+    // 투표 완료 후에도 5단계에 머물러서 새로운 제안이 추가되면 투표할 수 있게 함
+    // 교사가 투표 종료를 누르면 그 시점의 제안들 기준으로 1등 산출하고 모든 학생이 6단계로 이동
+    alert('투표가 완료되었습니다!\n\n다른 모둠이 공약을 제출하면 자동으로 표시되며, 추가로 투표할 수 있습니다.\n교사님이 투표 종료를 누르면 그 시점의 제안들 기준으로 결과가 확정됩니다.')
+    
+    // 5단계에 머물러서 새로운 제안이 추가되면 투표할 수 있게 함
+    // currentStage는 그대로 5로 유지
     saveProgress()
     await renderApp()
     
-    setTimeout(() => {
-      generateSpeech()
-    }, 500)
+    // 새로운 제안이 추가되면 자동으로 표시되도록 실시간 업데이트는 계속 유지
   } catch (error) {
     console.error('투표 저장 실패:', error)
     // Firebase 실패 시 localStorage에 저장
     localStorage.setItem('votes', JSON.stringify(appState.votes))
-    alert('투표가 완료되었습니다! (로컬 저장)')
-    appState.currentStage = 6
+    alert('투표가 완료되었습니다! (로컬 저장)\n\n다른 모둠이 공약을 제출하면 자동으로 표시되며, 추가로 투표할 수 있습니다.\n교사님이 투표 종료를 누르면 그 시점의 제안들 기준으로 결과가 확정됩니다.')
+    
+    // 5단계에 머물러서 새로운 제안이 추가되면 투표할 수 있게 함
+    // currentStage는 그대로 5로 유지
     saveProgress()
     await renderApp()
-    
-    setTimeout(() => {
-      generateSpeech()
-    }, 500)
   }
 }
 
@@ -3962,11 +4104,11 @@ async function generateSpeech() {
           winnerTeamId: winner.proposal.teamId,
           generatedAt: new Date().toISOString()
         })
-      } catch (error) {
+  } catch (error) {
         console.error('연설문 저장 실패:', error)
-      }
-    }
-    
+  }
+}
+
     speechContent.innerHTML = `<div class="speech-content">${speech.replace(/\n/g, '<br>')}</div>`
     document.getElementById('next-stage-btn')?.classList.remove('hidden')
   } catch (error) {
@@ -4102,15 +4244,15 @@ async function init() {
   // 페이지 로드 시에는 항상 0단계로 시작
   // 사용자가 모둠/번호를 입력하고 "시작하기"를 눌렀을 때 해당 사용자의 진행 상태를 복원
   // 관리자 페이지(8단계)는 절대 자동으로 복원되지 않도록 보장
-  appState.currentStage = 0
-  appState.teamId = null
-  appState.memberNumber = null
+    appState.currentStage = 0
+    appState.teamId = null
+    appState.memberNumber = null
   appState.sessionId = getOrCreateSessionId() // 세션 ID 초기화
-  appState.answers = {}
-  appState.proposal = { problem: '', solution: '', reason: '' }
-  appState.teamProposal = null
-  appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-  appState.votes = {}
+    appState.answers = {}
+    appState.proposal = { problem: '', solution: '', reason: '' }
+    appState.teamProposal = null
+    appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+    appState.votes = {}
   
   // 혹시 모를 경우를 대비해 currentStage가 8이면 0으로 강제 설정
   if (appState.currentStage === 8) {
