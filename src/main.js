@@ -1549,6 +1549,10 @@ async function renderStage6() {
     `
   }
   
+  // 현재 모둠이 참가했는지 확인 (제안 제출 여부)
+  const currentTeamProposal = proposals.find(p => p.teamId === appState.teamId)
+  const hasParticipated = !!currentTeamProposal
+  
   // 투표가 종료되었을 때만 1등 결과 표시
   return `
     <div class="stage-container">
@@ -1562,6 +1566,11 @@ async function renderStage6() {
         <p style="color: #bf360c; line-height: 1.8;">
           교사님이 투표를 종료하여 현재 결과가 최종 결과로 확정되었습니다.
         </p>
+        ${!hasParticipated ? `
+          <p style="color: #bf360c; line-height: 1.8; margin-top: 15px; font-weight: 600;">
+            ⚠️ ${appState.teamId}모둠은 이번 투표에 참가하지 않았습니다. 결과만 확인할 수 있습니다.
+          </p>
+        ` : ''}
       </div>
       
       <div class="speech-container">
@@ -1578,8 +1587,12 @@ async function renderStage6() {
       </div>
       
       <div style="display: flex; gap: 10px; margin-top: 20px;">
-        <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
-        <button class="btn hidden" id="next-stage-btn">다음 단계로 (대시보드 보기)</button>
+        ${hasParticipated ? `
+          <button class="btn btn-secondary" id="prev-stage-btn">이전 단계로</button>
+          <button class="btn hidden" id="next-stage-btn">다음 단계로 (대시보드 보기)</button>
+        ` : `
+          <button class="btn" id="exit-btn" style="width: 100%;">나가기</button>
+        `}
       </div>
     </div>
   `
