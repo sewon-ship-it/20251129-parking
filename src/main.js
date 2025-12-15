@@ -1633,7 +1633,7 @@ async function renderStage7() {
         
         <div class="question-card" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-left: 5px solid var(--winter-blue-500); margin-bottom: 30px; text-align: center; padding: 40px;">
           <div style="font-size: 4em; margin-bottom: 20px;">ℹ️</div>
-          <h3 style="color: var(--winter-blue-700); margin-bottom: 15px; font-size: 1.5em;">제안을 제출하지 않았습니다</h3>
+          <h3 style="color: var(--winter-blue-700); margin-bottom: 15px; font-size: 1.5em;">${teamName} 대시보드가 없습니다</h3>
           <p style="color: var(--winter-blue-900); line-height: 2; font-size: 1.1em; margin-bottom: 10px;">
             ${teamName}은(는) 제안을 제출하지 않아<br>
             대시보드를 확인할 수 없습니다.
@@ -2487,7 +2487,19 @@ function attachEventListeners() {
           // 1. 모둠의 currentStage 확인 (4단계 이상일 때)
           const teamCurrentStageRef = ref(db, `teams/${teamKey}/currentStage`)
           const teamCurrentStageSnapshot = await get(teamCurrentStageRef)
-          const teamCurrentStage = teamCurrentStageSnapshot.exists() ? teamCurrentStageSnapshot.val() : null
+          let teamCurrentStage = teamCurrentStageSnapshot.exists() ? teamCurrentStageSnapshot.val() : null
+          
+          // teamCurrentStage가 8(관리자 페이지)이면 무시하고 null로 설정 (보안상 이유)
+          if (teamCurrentStage === 8) {
+            console.warn(`${appState.teamId}모둠의 currentStage가 8(관리자 페이지)로 설정되어 있습니다. 이를 무시하고 초기화합니다.`)
+            teamCurrentStage = null
+            // Firebase에서도 8을 삭제
+            try {
+              await set(teamCurrentStageRef, null)
+            } catch (error) {
+              console.error('teamCurrentStage 초기화 실패:', error)
+            }
+          }
           
           // 2. teamProposal 확인 (4단계일 때)
           const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
