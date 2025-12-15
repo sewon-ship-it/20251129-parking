@@ -2606,10 +2606,31 @@ function attachEventListeners() {
               }
             } else if (teamCurrentStage === 5) {
               // 5단계: 모둠이 5단계에 있으면 이 학생도 5단계로 이동 (투표 진행 중일 때만)
-              if (!hasProgress || appState.currentStage < 5) {
-                const previousStage = appState.currentStage
-                appState.currentStage = 5
-                console.log(`${appState.teamId}모둠이 5단계에 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 5단계로 이동합니다.`)
+              // 단, teamProposal이 있어야 함 (공약이 없으면 5단계로 갈 수 없음)
+              if (hasTeamProposal) {
+                if (!hasProgress || appState.currentStage < 5) {
+                  const previousStage = appState.currentStage
+                  appState.currentStage = 5
+                  console.log(`${appState.teamId}모둠이 5단계에 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 5단계로 이동합니다.`)
+                  saveProgress()
+                }
+              } else {
+                // teamProposal이 없으면 1단계로 초기화 (데이터 삭제됨)
+                console.log(`${appState.teamId}모둠이 5단계에 있지만 teamProposal이 없습니다. 1단계로 초기화합니다.`)
+                appState.currentStage = 1
+                appState.teamProposal = null
+                appState.answers = {}
+                appState.proposal = { problem: '', solution: '', reason: '' }
+                appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+                appState.votes = {}
+                // Firebase의 teamCurrentStage도 null로 초기화
+                try {
+                  const teamKey = `team${appState.teamId}`
+                  const teamCurrentStageRef = ref(db, `teams/${teamKey}/currentStage`)
+                  await set(teamCurrentStageRef, null)
+                } catch (error) {
+                  console.error('teamCurrentStage 초기화 실패:', error)
+                }
                 saveProgress()
               }
             } else if (teamCurrentStage >= 6) {
@@ -4317,7 +4338,8 @@ function getUserProgressKey(teamId, sessionId, stage) {
 
 // Firebase에 모둠 진행 상태 저장 (백그라운드 실행)
 async function saveTeamCurrentStageToFirebase() {
-  if (!appState.teamId || !appState.sessionId || !db || appState.currentStage < 4) {
+  // 8단계(관리자 페이지)는 저장하지 않음 (보안상 이유)
+  if (!appState.teamId || !appState.sessionId || !db || appState.currentStage < 4 || appState.currentStage === 8) {
     return
   }
   
