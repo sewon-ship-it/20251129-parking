@@ -1407,7 +1407,13 @@ function setupRealtimeUpdates() {
           generateSpeech()
         }, 500)
       } else if (votingStatus === 'closed' && appState.currentStage === 6) {
-        // 이미 6단계에 있으면 연설문만 생성
+        // 이미 6단계에 있으면 연설문이 이미 로드되었는지 확인
+        const speechContent = document.getElementById('speech-content')
+        if (speechContent && !speechContent.querySelector('.loading') && speechContent.textContent.trim().length > 0) {
+          // 연설문이 이미 로드되어 있으면 재렌더링하지 않음 (깜빡거림 방지)
+          return
+        }
+        // 연설문이 없으면 생성
         await renderApp()
         attachEventListeners()
         setTimeout(() => {
@@ -2750,6 +2756,16 @@ function attachEventListeners() {
         
         // 투표가 종료되었고 진행 상태가 없으면 결과 보기(6단계)로 이동
         if (votingStatus === 'closed') {
+          // 참가하지 않은 모둠은 안내 메시지 표시 후 6단계로 이동
+          const confirmed = confirm(
+            `투표가 이미 종료되었습니다.\n\n` +
+            `현재는 결과만 확인할 수 있습니다.\n` +
+            `새로 시작하려면 선생님께 투표 재개를 요청해주세요.\n\n` +
+            `결과 보기로 이동하시겠습니까?`
+          )
+          if (!confirmed) {
+            return // 사용자가 취소하면 아무것도 하지 않음
+          }
           console.log(`${appState.teamId}모둠: 투표가 종료되었습니다. 결과 보기(6단계)로 이동합니다.`)
           appState.currentStage = 6
           saveProgress()
@@ -4403,7 +4419,13 @@ function setupGlobalVotingStatusListener() {
           generateSpeech()
         }, 500)
       } else if (votingStatus === 'closed' && appState.currentStage === 6) {
-        // 이미 6단계에 있으면 연설문만 생성
+        // 이미 6단계에 있으면 연설문이 이미 로드되었는지 확인
+        const speechContent = document.getElementById('speech-content')
+        if (speechContent && !speechContent.querySelector('.loading') && speechContent.textContent.trim().length > 0) {
+          // 연설문이 이미 로드되어 있으면 재렌더링하지 않음 (깜빡거림 방지)
+          return
+        }
+        // 연설문이 없으면 생성
         await renderApp()
         attachEventListeners()
         setTimeout(() => {
