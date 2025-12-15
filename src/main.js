@@ -260,7 +260,17 @@ async function renderCurrentStage() {
       // 6단계는 최종 결과이므로 전역 리스너 불필요 (깜빡거림 방지)
       return await renderStage6()
     case 7: return await renderStage7()
-    case 8: return await renderAdminStage()
+    case 8: 
+      // 관리자 페이지 접근 차단: 학생은 접근 불가
+      // 비밀번호 없이 접근한 경우 0단계로 리다이렉트
+      const adminPassword = sessionStorage.getItem('adminAuthenticated')
+      if (!adminPassword || adminPassword !== 'true') {
+        console.warn('관리자 페이지 접근 차단: 비밀번호 인증이 필요합니다. 0단계로 리다이렉트합니다.')
+        appState.currentStage = 0
+        saveProgress()
+        return renderStage0()
+      }
+      return await renderAdminStage()
     default: return renderStage0()
   }
 }
@@ -2502,6 +2512,42 @@ function attachEventListeners() {
           }
         }
         
+      // 투표 종료 상태에서 참가 여부 확인 및 단계 결정 (우선 처리)
+      if (votingStatus === 'closed') {
+        // 제안 제출 여부 확인
+        const proposals = await loadProposalsFromFirebase()
+        const currentTeamProposal = proposals.find(p => p.teamId === appState.teamId)
+        const hasParticipated = !!currentTeamProposal
+        
+        if (hasParticipated) {
+          // 참가한 모둠: 7단계(대시보드)로 이동 (제안이 있으므로)
+          console.log(`${appState.teamId}모둠: 투표 종료 상태, 참가 모둠. 7단계(대시보드)로 이동합니다.`)
+          appState.currentStage = 7
+          saveProgress()
+          await renderApp()
+          return // 여기서 종료
+        } else {
+          // 참가하지 않은 모둠: 6단계만 보이고 나가기만 가능
+          console.log(`${appState.teamId}모둠: 투표 종료 상태, 미참가 모둠. 6단계(연설문)로 이동합니다.`)
+          const confirmed = confirm(
+            `투표가 이미 종료되었습니다.\n\n` +
+            `현재는 결과만 확인할 수 있습니다.\n` +
+            `새로 시작하려면 선생님께 투표 재개를 요청해주세요.\n\n` +
+            `결과 보기로 이동하시겠습니까?`
+          )
+          if (!confirmed) {
+            return // 사용자가 취소하면 아무것도 하지 않음
+          }
+          appState.currentStage = 6
+          saveProgress()
+          await renderApp()
+          setTimeout(() => {
+            generateSpeech()
+          }, 500)
+          return // 여기서 종료
+        }
+      }
+      
       // 4단계 이후는 Firebase에서 모둠 진행 상태 확인하여 동기화
       // 같은 모둠의 모든 학생은 같은 진행 상태를 공유해야 하므로, Firebase를 항상 확인
       if (db && appState.teamId) {
@@ -2532,9 +2578,9 @@ function attachEventListeners() {
                                   (teamProposalSnapshot.val().problem || teamProposalSnapshot.val().solution || 
                                    teamProposalSnapshot.val().reason || teamProposalSnapshot.val().combinedText)
           
-          // 3. 모둠 진행 상태가 있으면 동기화
-          if (teamCurrentStage && teamCurrentStage >= 4) {
-            // 모둠이 4단계 이상에 있으면 이 학생도 같은 단계로 이동
+          // 3. 모둠 진행 상태가 있으면 동기화 (단, 투표 종료 상태는 위에서 이미 처리됨)
+          if (teamCurrentStage && teamCurrentStage >= 4 && votingStatus === 'open') {
+            // 모둠이 4단계 이상에 있으면 이 학생도 같은 단계로 이동 (투표 진행 중일 때만)
             if (teamCurrentStage === 4) {
               // 4단계: teamProposal이 있어야 함
               if (hasTeamProposal) {
@@ -2559,50 +2605,33 @@ function attachEventListeners() {
                 saveProgress()
               }
             } else if (teamCurrentStage === 5) {
-              // 5단계: 모둠이 5단계에 있으면 이 학생도 5단계로 이동
-              // 단, 투표가 종료된 상태이면 6단계로 이동
-              if (votingStatus === 'closed') {
-                // 투표 종료 상태이면 6단계로 이동
-                const previousStage = appState.currentStage
-                appState.currentStage = 6
-                console.log(`${appState.teamId}모둠이 5단계에 있지만 투표가 종료되어 6단계로 이동합니다.`)
-                saveProgress()
-              } else if (!hasProgress || appState.currentStage < 5) {
-                // 투표 진행 중이면 5단계로 이동
+              // 5단계: 모둠이 5단계에 있으면 이 학생도 5단계로 이동 (투표 진행 중일 때만)
+              if (!hasProgress || appState.currentStage < 5) {
                 const previousStage = appState.currentStage
                 appState.currentStage = 5
                 console.log(`${appState.teamId}모둠이 5단계에 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 5단계로 이동합니다.`)
                 saveProgress()
               }
             } else if (teamCurrentStage >= 6) {
-              // 6단계 이상: 모둠이 6단계 이상에 있으면
-              // 투표가 재개된 상태이면 5단계로 돌아가서 새로운 제안에 투표할 수 있게 함
-              if (votingStatus === 'open') {
-                console.log(`${appState.teamId}모둠이 ${teamCurrentStage}단계에 있지만 투표가 재개되어 5단계로 돌아갑니다. 기존 투표를 초기화합니다.`)
-                appState.currentStage = 5
-                // 기존 투표 데이터 초기화 (모든 제안에 대해 새로 투표)
-                appState.votes = {}
-                // Firebase에서도 모둠 투표 데이터 초기화
-                if (db && appState.teamId) {
-                  try {
-                    const teamKey = `team${appState.teamId}`
-                    const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
-                    await set(teamVotesRef, null)
-                    console.log(`${teamKey}의 투표 데이터를 초기화했습니다.`)
-                  } catch (error) {
-                    console.error('투표 데이터 초기화 실패:', error)
-                  }
+              // 6단계 이상: 투표가 재개된 상태이면 5단계로 돌아가서 새로운 제안에 투표할 수 있게 함
+              console.log(`${appState.teamId}모둠이 ${teamCurrentStage}단계에 있지만 투표가 재개되어 5단계로 돌아갑니다. 기존 투표를 초기화합니다.`)
+              appState.currentStage = 5
+              // 기존 투표 데이터 초기화 (모든 제안에 대해 새로 투표)
+              appState.votes = {}
+              // Firebase에서도 모둠 투표 데이터 초기화
+              if (db && appState.teamId) {
+                try {
+                  const teamKey = `team${appState.teamId}`
+                  const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
+                  await set(teamVotesRef, null)
+                  console.log(`${teamKey}의 투표 데이터를 초기화했습니다.`)
+                } catch (error) {
+                  console.error('투표 데이터 초기화 실패:', error)
                 }
-                saveProgress()
-              } else if (!hasProgress || appState.currentStage < teamCurrentStage) {
-                // 투표가 종료된 상태이면 6단계 이상으로 이동
-                const previousStage = appState.currentStage
-                appState.currentStage = teamCurrentStage
-                console.log(`${appState.teamId}모둠이 ${teamCurrentStage}단계에 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 ${teamCurrentStage}단계로 이동합니다.`)
-                saveProgress()
               }
+              saveProgress()
             }
-          } else if (hasTeamProposal) {
+          } else if (hasTeamProposal && votingStatus === 'open') {
             // teamProposal은 있지만 currentStage가 없으면 4단계로 설정 (하위 호환성)
             appState.teamProposal = teamProposalSnapshot.val()
             if (!hasProgress || appState.currentStage < 4) {
@@ -2760,41 +2789,8 @@ function attachEventListeners() {
           }, 100)
         }
       } else {
-        // 진행 상태가 없지만, 투표가 종료되었고 해당 모둠이 투표를 완료했다면 6단계로 전환
-        if (votingStatus === 'closed' && hasTeamVote) {
-          console.log(`${appState.teamId}모둠: 투표가 종료되었고 투표 완료 확인. 6단계로 자동 전환합니다.`)
-          appState.currentStage = 6
-          saveProgress()
-          await renderApp()
-          setTimeout(() => {
-            generateSpeech()
-          }, 500)
-          return // 여기서 종료
-        }
-        
-        // 투표가 종료되었고 진행 상태가 없으면 결과 보기(6단계)로 이동
-        if (votingStatus === 'closed') {
-          // 참가하지 않은 모둠은 안내 메시지 표시 후 6단계로 이동
-          const confirmed = confirm(
-            `투표가 이미 종료되었습니다.\n\n` +
-            `현재는 결과만 확인할 수 있습니다.\n` +
-            `새로 시작하려면 선생님께 투표 재개를 요청해주세요.\n\n` +
-            `결과 보기로 이동하시겠습니까?`
-          )
-          if (!confirmed) {
-            return // 사용자가 취소하면 아무것도 하지 않음
-          }
-          console.log(`${appState.teamId}모둠: 투표가 종료되었습니다. 결과 보기(6단계)로 이동합니다.`)
-          appState.currentStage = 6
-          saveProgress()
-          await renderApp()
-          setTimeout(() => {
-            generateSpeech()
-          }, 500)
-          return // 여기서 종료
-        }
-        
-        // 진행 상태가 없고 투표가 진행 중이면 1단계부터 시작
+        // 진행 상태가 없는 경우는 위에서 이미 처리됨 (투표 종료 상태 처리)
+        // 여기서는 투표 진행 중인 경우만 처리
         console.log(`${appState.teamId}모둠의 새 시작: 1단계`)
         
         // 진행 상태 초기화
@@ -2831,6 +2827,8 @@ function attachEventListeners() {
       adminBtn.addEventListener('click', () => {
         const password = prompt('관리자 비밀번호를 입력하세요:')
         if (password === 'teacher2024' || password === 'admin') {
+          // 비밀번호 인증 성공 시 sessionStorage에 저장
+          sessionStorage.setItem('adminAuthenticated', 'true')
           appState.currentStage = 8
           saveProgress()
           renderApp()
