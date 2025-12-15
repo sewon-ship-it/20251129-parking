@@ -192,6 +192,11 @@ async function renderApp() {
     ${stageContent}
   `
   
+  // 5단계나 6단계에 있으면 전역 투표 상태 리스너 설정
+  if (appState.currentStage === 5 || appState.currentStage === 6) {
+    setupGlobalVotingStatusListener()
+  }
+  
   attachEventListeners()
 }
 
@@ -247,8 +252,14 @@ async function renderCurrentStage() {
         }
       }
       return renderStage4()
-    case 5: return await renderStage5()
-    case 6: return await renderStage6()
+    case 5: 
+      // 5단계로 이동할 때 전역 리스너 확인
+      setupGlobalVotingStatusListener()
+      return await renderStage5()
+    case 6: 
+      // 6단계로 이동할 때 전역 리스너 확인
+      setupGlobalVotingStatusListener()
+      return await renderStage6()
     case 7: return await renderStage7()
     case 8: return await renderAdminStage()
     default: return renderStage0()
@@ -1382,9 +1393,12 @@ function setupRealtimeUpdates() {
     const votingStatus = snapshot.exists() ? snapshot.val() : 'open'
     localStorage.setItem('votingStatus', votingStatus)
     
+    console.log(`투표 상태 변경 감지: ${votingStatus}, 현재 단계: ${appState.currentStage}`)
+    
     if (appState.currentStage === 5 || appState.currentStage === 6) {
       // 투표가 종료되었고 현재 5단계에 있으면 6단계로 자동 전환
       if (votingStatus === 'closed' && appState.currentStage === 5) {
+        console.log('투표 종료 감지: 5단계에서 6단계로 자동 전환')
         appState.currentStage = 6
         saveProgress()
         await renderApp()
@@ -1392,15 +1406,17 @@ function setupRealtimeUpdates() {
         setTimeout(() => {
           generateSpeech()
         }, 500)
-      } else {
-      await renderApp()
-      attachEventListeners()
-      
-      if (votingStatus === 'closed' && appState.currentStage === 6) {
+      } else if (votingStatus === 'closed' && appState.currentStage === 6) {
+        // 이미 6단계에 있으면 연설문만 생성
+        await renderApp()
+        attachEventListeners()
         setTimeout(() => {
           generateSpeech()
         }, 500)
-        }
+      } else if (votingStatus === 'open') {
+        // 투표가 재개되면 화면만 업데이트
+        await renderApp()
+        attachEventListeners()
       }
     }
   }, (error) => {
@@ -1820,11 +1836,11 @@ async function renderAdminStage() {
         if (teamVote[index] || teamVote[String(index)]) {
           const vote = teamVote[index] || teamVote[String(index)]
           if (vote && (vote.effect || vote.cost || vote.practical || vote.harmless)) {
-            totalEffect += vote.effect || 0
-            totalCost += vote.cost || 0
-            totalPractical += vote.practical || 0
-            totalHarmless += vote.harmless || 0
-            voteCount++
+        totalEffect += vote.effect || 0
+        totalCost += vote.cost || 0
+        totalPractical += vote.practical || 0
+        totalHarmless += vote.harmless || 0
+        voteCount++
           }
         }
       }
@@ -3904,8 +3920,8 @@ async function checkVotingComplete() {
     const actualIndex = allProposals.findIndex(p => p.id === proposal.id || (p.teamId === proposal.teamId && p.name === proposal.name))
     if (actualIndex >= 0) {
       const votes = appState.votes[actualIndex] || {}
-      if (!votes.effect || !votes.cost || !votes.practical || !votes.harmless) {
-        allComplete = false
+    if (!votes.effect || !votes.cost || !votes.practical || !votes.harmless) {
+      allComplete = false
       }
     }
   })
@@ -4255,8 +4271,57 @@ function loadProgress(teamId, sessionId) {
 }
 
 // 초기화
+// 전역 투표 상태 리스너 (5단계나 6단계에 있을 때 자동 전환)
+let globalVotingStatusListener = null
+
+function setupGlobalVotingStatusListener() {
+  if (!db) return
+  
+  // 기존 리스너가 있으면 제거
+  if (globalVotingStatusListener) {
+    globalVotingStatusListener()
+    globalVotingStatusListener = null
+  }
+  
+  // 전역 리스너 설정 (5단계나 6단계에 있을 때만 작동)
+  const votingStatusRef = ref(db, 'votingStatus')
+  globalVotingStatusListener = onValue(votingStatusRef, async (snapshot) => {
+    const votingStatus = snapshot.exists() ? snapshot.val() : 'open'
+    localStorage.setItem('votingStatus', votingStatus)
+    
+    // 5단계나 6단계에 있을 때만 작동
+    if (appState.currentStage === 5 || appState.currentStage === 6) {
+      console.log(`[전역 리스너] 투표 상태 변경: ${votingStatus}, 현재 단계: ${appState.currentStage}`)
+      
+      // 투표가 종료되었고 현재 5단계에 있으면 6단계로 자동 전환
+      if (votingStatus === 'closed' && appState.currentStage === 5) {
+        console.log('[전역 리스너] 투표 종료 감지: 5단계에서 6단계로 자동 전환')
+        appState.currentStage = 6
+        saveProgress()
+        await renderApp()
+        attachEventListeners()
+        setTimeout(() => {
+          generateSpeech()
+        }, 500)
+      } else if (votingStatus === 'closed' && appState.currentStage === 6) {
+        // 이미 6단계에 있으면 연설문만 생성
+        await renderApp()
+        attachEventListeners()
+        setTimeout(() => {
+          generateSpeech()
+        }, 500)
+      }
+    }
+  }, (error) => {
+    console.error('[전역 리스너] 투표 상태 실시간 업데이트 오류:', error)
+  })
+}
+
 async function init() {
   await checkAPIKey()
+  
+  // 전역 투표 상태 리스너 설정
+  setupGlobalVotingStatusListener()
   
   // 페이지 로드 시에는 항상 0단계로 시작
   // 사용자가 모둠/번호를 입력하고 "시작하기"를 눌렀을 때 해당 사용자의 진행 상태를 복원
