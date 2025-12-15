@@ -192,8 +192,8 @@ async function renderApp() {
     ${stageContent}
   `
   
-  // 5단계나 6단계에 있으면 전역 투표 상태 리스너 설정
-  if (appState.currentStage === 5 || appState.currentStage === 6) {
+  // 5단계에만 전역 투표 상태 리스너 설정 (6단계는 최종 결과이므로 불필요)
+  if (appState.currentStage === 5) {
     setupGlobalVotingStatusListener()
   }
   
@@ -257,8 +257,7 @@ async function renderCurrentStage() {
       setupGlobalVotingStatusListener()
       return await renderStage5()
     case 6: 
-      // 6단계로 이동할 때 전역 리스너 확인
-      setupGlobalVotingStatusListener()
+      // 6단계는 최종 결과이므로 전역 리스너 불필요 (깜빡거림 방지)
       return await renderStage6()
     case 7: return await renderStage7()
     case 8: return await renderAdminStage()
@@ -1585,10 +1584,9 @@ async function renderStage6() {
     </div>
   `
   
-  // 실시간 업데이트 설정
+  // 실시간 업데이트 설정 (6단계는 최종 결과이므로 실시간 업데이트 불필요)
   setTimeout(() => {
-    setupRealtimeUpdates()
-    setupSpeechRealtimeSync() // 연설문 실시간 동기화
+    setupSpeechRealtimeSync() // 연설문 실시간 동기화만 설정
   }, 100)
 }
 
@@ -1598,13 +1596,17 @@ function setupSpeechRealtimeSync() {
   
   const speechRef = ref(db, 'speech/winner')
   
-  // 실시간 동기화
+  // 실시간 동기화 (이미 연설문이 있으면 업데이트하지 않음)
   const unsubscribe = onValue(speechRef, (snapshot) => {
     if (snapshot.exists() && appState.currentStage === 6) {
       const speechData = snapshot.val()
       if (speechData && speechData.content) {
         const speechContent = document.getElementById('speech-content')
         if (speechContent) {
+          // 이미 연설문이 로드되어 있으면 업데이트하지 않음 (깜빡거림 방지)
+          if (speechContent.textContent.trim().length > 0 && !speechContent.querySelector('.loading')) {
+            return
+          }
           speechContent.innerHTML = `<div class="speech-content">${speechData.content.replace(/\n/g, '<br>')}</div>`
           document.getElementById('next-stage-btn')?.classList.remove('hidden')
         }
@@ -4404,8 +4406,8 @@ function setupGlobalVotingStatusListener() {
     const votingStatus = snapshot.exists() ? snapshot.val() : 'open'
     localStorage.setItem('votingStatus', votingStatus)
     
-    // 5단계나 6단계에 있을 때만 작동
-    if (appState.currentStage === 5 || appState.currentStage === 6) {
+    // 5단계에만 작동 (6단계는 최종 결과이므로 리스너 불필요 - 깜빡거림 방지)
+    if (appState.currentStage === 5) {
       console.log(`[전역 리스너] 투표 상태 변경: ${votingStatus}, 현재 단계: ${appState.currentStage}`)
       
       // 투표가 종료되었고 현재 5단계에 있으면 6단계로 자동 전환
@@ -4418,40 +4420,25 @@ function setupGlobalVotingStatusListener() {
         setTimeout(() => {
           generateSpeech()
         }, 500)
-      } else if (votingStatus === 'closed' && appState.currentStage === 6) {
-        // 이미 6단계에 있으면 연설문이 이미 로드되었는지 확인
-        const speechContent = document.getElementById('speech-content')
-        if (speechContent && !speechContent.querySelector('.loading') && speechContent.textContent.trim().length > 0) {
-          // 연설문이 이미 로드되어 있으면 재렌더링하지 않음 (깜빡거림 방지)
-          return
-        }
-        // 연설문이 없으면 생성
-        await renderApp()
-        attachEventListeners()
-        setTimeout(() => {
-          generateSpeech()
-        }, 500)
-      } else if (votingStatus === 'open' && appState.currentStage === 6) {
-        // 투표가 재개되고 현재 6단계에 있으면 5단계로 돌아가서 새로운 제안에 투표할 수 있게 함
-        console.log('[전역 리스너] 투표 재개 감지: 6단계에서 5단계로 돌아갑니다. 기존 투표를 초기화합니다.')
-        appState.currentStage = 5
-        // 기존 투표 데이터 초기화 (모든 제안에 대해 새로 투표)
-        appState.votes = {}
-        // Firebase에서도 모둠 투표 데이터 초기화
-        if (db && appState.teamId) {
-          try {
-            const teamKey = `team${appState.teamId}`
-            const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
-            await set(teamVotesRef, null)
-            console.log(`${teamKey}의 투표 데이터를 초기화했습니다.`)
-          } catch (error) {
-            console.error('투표 데이터 초기화 실패:', error)
-          }
-        }
-        saveProgress()
-        await renderApp()
-        attachEventListeners()
       }
+    } else if (appState.currentStage === 6 && votingStatus === 'open') {
+      // 6단계에서 투표가 재개되면 5단계로 돌아가기 (드문 경우)
+      console.log('[전역 리스너] 투표 재개 감지: 6단계에서 5단계로 돌아갑니다. 기존 투표를 초기화합니다.')
+      appState.currentStage = 5
+      appState.votes = {}
+      if (db && appState.teamId) {
+        try {
+          const teamKey = `team${appState.teamId}`
+          const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
+          await set(teamVotesRef, null)
+          console.log(`${teamKey}의 투표 데이터를 초기화했습니다.`)
+        } catch (error) {
+          console.error('투표 데이터 초기화 실패:', error)
+        }
+      }
+      saveProgress()
+      await renderApp()
+      attachEventListeners()
     }
   }, (error) => {
     console.error('[전역 리스너] 투표 상태 실시간 업데이트 오류:', error)
