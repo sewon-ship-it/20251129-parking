@@ -2183,7 +2183,24 @@ async function clearAllData() {
     localStorage.removeItem('votes')
     localStorage.removeItem('deletedProposals')
     
-    alert('✅ 모든 데이터가 성공적으로 삭제되었습니다! (제안, 투표, 모둠 제안 데이터 모두 삭제됨)')
+    // 모든 모둠의 진행 상태도 삭제 (1~10모둠, 모든 가능한 세션)
+    // localStorage의 키 패턴: progress_${teamId}_${sessionId}
+    for (let teamNum = 1; teamNum <= 10; teamNum++) {
+      // localStorage의 모든 키를 확인하여 해당 모둠의 진행 상태 삭제
+      const keysToRemove = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && key.startsWith(`progress_${teamNum}_`)) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key))
+    }
+    
+    // lastUser도 삭제 (선택사항, 하지만 삭제하는 것이 더 깔끔함)
+    localStorage.removeItem('lastUser')
+    
+    alert('✅ 모든 데이터가 성공적으로 삭제되었습니다!\n\n(제안, 투표, 모둠 제안 데이터, 진행 상태 모두 삭제됨)\n\n학생들이 다시 접속하면 0단계부터 시작합니다.')
     
     // 관리자 페이지 새로고침
     appState.currentStage = 8
