@@ -136,7 +136,6 @@ Firebase Console에서 다음 규칙을 설정하세요:
 ## 데이터 파일
 
 - `public/illegal_parking.csv`: 서울시 불법 주정차 민원 데이터
-- `public/cctv.csv`: 동작구 CCTV 불법 주정차 구역 데이터
 
 ## 기술 스택
 

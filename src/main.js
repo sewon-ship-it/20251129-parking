@@ -26,7 +26,6 @@ const appState = {
   sessionId: null, // 세션 ID (각 사용자 세션 구분용)
   apiKeyStatus: 'checking',
   parkingData: null,
-  cctvData: null,
   answers: {},
   proposal: {
     problem: '',
@@ -2787,9 +2786,6 @@ function attachEventListeners() {
             if (!appState.parkingData) {
               appState.parkingData = await parseCSV('/illegal_parking.csv')
             }
-            if (!appState.cctvData) {
-              appState.cctvData = await parseCSV('/cctv.csv')
-            }
           } catch (error) {
             console.error('CSV 데이터 로드 실패:', error)
           }
@@ -2893,8 +2889,6 @@ function attachEventListeners() {
           console.log('CSV 파일 로드 시작...')
           appState.parkingData = await parseCSV('/illegal_parking.csv')
           console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
-          appState.cctvData = await parseCSV('/cctv.csv')
-          console.log('cctv.csv 로드 완료:', appState.cctvData.length, '개')
           saveProgress()
           await renderApp()
           setTimeout(() => {
@@ -3523,8 +3517,7 @@ function attachEventListeners() {
 // 차트 렌더링
 function renderCharts() {
   console.log('renderCharts() 함수 실행:', {
-    parkingData: appState.parkingData ? `${appState.parkingData.length}개` : '없음',
-    cctvData: appState.cctvData ? `${appState.cctvData.length}개` : '없음'
+    parkingData: appState.parkingData ? `${appState.parkingData.length}개` : '없음'
   })
   
   if (!appState.parkingData) {
