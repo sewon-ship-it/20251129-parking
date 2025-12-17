@@ -2433,70 +2433,120 @@ function attachEventListeners() {
           console.error('접속 정보 저장 실패:', error)
         }
       }
-        
-      // 해당 사용자의 진행 상태 복원 시도 (1~3단계는 개별, 4단계 이후는 모둠별)
-      const hasProgress = loadProgress(appState.teamId, appState.sessionId)
       
-      // 투표 상태 먼저 확인
+      // 투표 상태 먼저 확인 (진행 상태 복원 전에 확인)
       const votingStatus = await getVotingStatus()
       
-      // Firebase에서 해당 모둠의 투표 데이터 확인 (투표 종료 시 자동 전환을 위해)
-      let hasTeamVote = false
-      if (votingStatus === 'closed') {
+      // Firebase에서 모둠 진행 상태를 먼저 확인 (4단계 이상일 때)
+      let teamCurrentStage = null
+      let hasTeamProposal = false
+      if (db && appState.teamId && votingStatus === 'open') {
         try {
-          const votes = await loadVotesFromFirebase()
-          const teamName = `${appState.teamId}모둠`
-          hasTeamVote = votes[teamName] && Object.keys(votes[teamName]).length > 0
+          const teamKey = `team${appState.teamId}`
+          
+          // 1. 모둠의 currentStage 확인
+          const teamCurrentStageRef = ref(db, `teams/${teamKey}/currentStage`)
+          const teamCurrentStageSnapshot = await get(teamCurrentStageRef)
+          teamCurrentStage = teamCurrentStageSnapshot.exists() ? teamCurrentStageSnapshot.val() : null
+          
+          // teamCurrentStage가 8(관리자 페이지)이면 무시
+          if (teamCurrentStage === 8) {
+            teamCurrentStage = null
+          }
+          
+          // 2. teamProposal 확인
+          const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+          const teamProposalSnapshot = await get(teamProposalRef)
+          hasTeamProposal = teamProposalSnapshot.exists() && teamProposalSnapshot.val() && 
+                            (teamProposalSnapshot.val().problem || teamProposalSnapshot.val().solution || 
+                             teamProposalSnapshot.val().reason || teamProposalSnapshot.val().combinedText)
         } catch (error) {
-          console.error('투표 데이터 확인 실패:', error)
+          console.error('Firebase 모둠 진행 상태 확인 실패:', error)
         }
       }
       
-      // 1~3단계는 개별 진행 상태, 4단계 이후는 모둠별 공유
-      if (hasProgress && appState.currentStage > 0 && appState.currentStage <= 3) {
-        // 1~3단계는 개별 진행 상태 복원
-        console.log(`${appState.teamId}모둠 (세션: ${appState.sessionId})의 개별 진행 상태 복원: ${appState.currentStage}단계`)
-      } else if (hasProgress && appState.currentStage === 4) {
-        // 4단계는 모둠별 공유이므로 Firebase에서 teamProposal 확인
-        console.log(`${appState.teamId}모둠의 모둠 진행 상태 복원: ${appState.currentStage}단계`)
-        
-        // Firebase에서 teamProposal 확인
-        if (db && appState.teamId) {
-          try {
-        const teamKey = `team${appState.teamId}`
-            const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
-            const teamSnapshot = await get(teamProposalRef)
-            if (teamSnapshot.exists()) {
-              const teamProposalData = teamSnapshot.val()
-              if (teamProposalData && (teamProposalData.problem || teamProposalData.solution || teamProposalData.reason || teamProposalData.combinedText)) {
-                appState.teamProposal = teamProposalData
-                // 4단계 유지 (이미 4단계이므로 그대로)
-                console.log(`${appState.teamId}모둠의 모둠 제안 데이터를 로드했습니다. 4단계로 복원합니다.`)
-              }
-            }
-          } catch (error) {
-            console.error('모둠 제안 데이터 확인 실패:', error)
-          }
-        }
-      } else if (hasProgress && appState.currentStage >= 5) {
-        // 5단계 이후는 localStorage의 진행 상태를 그대로 사용 (복원된 단계 유지)
-        console.log(`${appState.teamId}모둠의 진행 상태 복원: ${appState.currentStage}단계`)
-        
-        // 4단계 데이터도 로드 (5단계 이후에도 필요할 수 있음)
-        if (db && appState.teamId) {
-          try {
+      // Firebase에 4단계 이상이 있으면 그 단계로 설정하고, localStorage 복원은 건너뛰기
+      if (teamCurrentStage && teamCurrentStage >= 4 && votingStatus === 'open') {
+        if (teamCurrentStage === 4 && hasTeamProposal) {
+          // 4단계로 설정
+          appState.currentStage = 4
+          if (db && appState.teamId) {
             const teamKey = `team${appState.teamId}`
             const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
             const teamSnapshot = await get(teamProposalRef)
             if (teamSnapshot.exists()) {
-              const teamProposalData = teamSnapshot.val()
-              if (teamProposalData) {
-                appState.teamProposal = teamProposalData
-              }
+              appState.teamProposal = teamSnapshot.val()
             }
-          } catch (error) {
-            console.error('모둠 제안 데이터 확인 실패:', error)
           }
+          console.log(`${appState.teamId}모둠: Firebase에서 4단계 확인. 4단계로 설정합니다.`)
+        } else if (teamCurrentStage === 5 && hasTeamProposal) {
+          // 5단계로 설정
+          appState.currentStage = 5
+          if (db && appState.teamId) {
+            const teamKey = `team${appState.teamId}`
+            const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+            const teamSnapshot = await get(teamProposalRef)
+            if (teamSnapshot.exists()) {
+              appState.teamProposal = teamSnapshot.val()
+            }
+          }
+          console.log(`${appState.teamId}모둠: Firebase에서 5단계 확인. 5단계로 설정합니다.`)
+        } else if (teamCurrentStage >= 6) {
+          // 6단계 이상이면 투표 재개 상태이므로 5단계로 돌아가기
+          appState.currentStage = 5
+          appState.votes = {}
+          if (db && appState.teamId) {
+            const teamKey = `team${appState.teamId}`
+            const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+            const teamSnapshot = await get(teamProposalRef)
+            if (teamSnapshot.exists()) {
+              appState.teamProposal = teamSnapshot.val()
+            }
+            // 투표 데이터 초기화
+            try {
+              const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
+              await set(teamVotesRef, null)
+            } catch (error) {
+              console.error('투표 데이터 초기화 실패:', error)
+            }
+          }
+          console.log(`${appState.teamId}모둠: Firebase에서 ${teamCurrentStage}단계 확인. 투표 재개 상태이므로 5단계로 설정합니다.`)
+        }
+        // Firebase 단계로 설정했으므로 localStorage 복원은 건너뛰고 바로 저장
+        saveProgress()
+      } else if (hasTeamProposal && votingStatus === 'open' && !teamCurrentStage) {
+        // teamProposal은 있지만 currentStage가 없으면 4단계로 설정
+        appState.currentStage = 4
+        if (db && appState.teamId) {
+          const teamKey = `team${appState.teamId}`
+          const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
+          const teamSnapshot = await get(teamProposalRef)
+          if (teamSnapshot.exists()) {
+            appState.teamProposal = teamSnapshot.val()
+          }
+        }
+        console.log(`${appState.teamId}모둠: teamProposal 확인. 4단계로 설정합니다.`)
+        saveProgress()
+      } else {
+        // Firebase에 4단계 이상이 없으면 localStorage에서 진행 상태 복원 시도 (1~3단계만)
+        const hasProgress = loadProgress(appState.teamId, appState.sessionId)
+        
+        // Firebase에서 해당 모둠의 투표 데이터 확인 (투표 종료 시 자동 전환을 위해)
+        let hasTeamVote = false
+        if (votingStatus === 'closed') {
+          try {
+            const votes = await loadVotesFromFirebase()
+            const teamName = `${appState.teamId}모둠`
+            hasTeamVote = votes[teamName] && Object.keys(votes[teamName]).length > 0
+          } catch (error) {
+            console.error('투표 데이터 확인 실패:', error)
+          }
+        }
+        
+        // 1~3단계는 개별 진행 상태만 복원됨 (위에서 Firebase 확인 후 4단계 이상은 이미 설정됨)
+        if (hasProgress && appState.currentStage > 0 && appState.currentStage <= 3) {
+          // 1~3단계는 개별 진행 상태 복원
+          console.log(`${appState.teamId}모둠 (세션: ${appState.sessionId})의 개별 진행 상태 복원: ${appState.currentStage}단계`)
         }
       }
       
@@ -2586,136 +2636,7 @@ function attachEventListeners() {
         }
       }
       
-      // 4단계 이후는 Firebase에서 모둠 진행 상태 확인하여 동기화
-      // 같은 모둠의 모든 학생은 같은 진행 상태를 공유해야 하므로, Firebase를 항상 확인
-      if (db && appState.teamId) {
-        try {
-          const teamKey = `team${appState.teamId}`
-          
-          // 1. 모둠의 currentStage 확인 (4단계 이상일 때)
-          const teamCurrentStageRef = ref(db, `teams/${teamKey}/currentStage`)
-          const teamCurrentStageSnapshot = await get(teamCurrentStageRef)
-          let teamCurrentStage = teamCurrentStageSnapshot.exists() ? teamCurrentStageSnapshot.val() : null
-          
-          // teamCurrentStage가 8(관리자 페이지)이면 무시하고 null로 설정 (보안상 이유)
-          if (teamCurrentStage === 8) {
-            console.warn(`${appState.teamId}모둠의 currentStage가 8(관리자 페이지)로 설정되어 있습니다. 이를 무시하고 초기화합니다.`)
-            teamCurrentStage = null
-            // Firebase에서도 8을 삭제
-            try {
-              await set(teamCurrentStageRef, null)
-            } catch (error) {
-              console.error('teamCurrentStage 초기화 실패:', error)
-            }
-          }
-          
-          // 2. teamProposal 확인 (4단계일 때)
-          const teamProposalRef = ref(db, `teams/${teamKey}/proposal`)
-          const teamProposalSnapshot = await get(teamProposalRef)
-          const hasTeamProposal = teamProposalSnapshot.exists() && teamProposalSnapshot.val() && 
-                                  (teamProposalSnapshot.val().problem || teamProposalSnapshot.val().solution || 
-                                   teamProposalSnapshot.val().reason || teamProposalSnapshot.val().combinedText)
-          
-          // 3. 모둠 진행 상태가 있으면 동기화 (단, 투표 종료 상태는 위에서 이미 처리됨)
-          if (teamCurrentStage && teamCurrentStage >= 4 && votingStatus === 'open') {
-            // 모둠이 4단계 이상에 있으면 이 학생도 같은 단계로 이동 (투표 진행 중일 때만)
-            if (teamCurrentStage === 4) {
-              // 4단계: teamProposal이 있어야 함
-              if (hasTeamProposal) {
-                appState.teamProposal = teamProposalSnapshot.val()
-                if (!hasProgress || appState.currentStage < 4) {
-                  const previousStage = appState.currentStage
-                  appState.currentStage = 4
-                  console.log(`${appState.teamId}모둠의 모둠 제안이 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 4단계로 이동합니다.`)
-                  saveProgress()
-                } else if (appState.currentStage === 4) {
-                  console.log(`${appState.teamId}모둠의 모둠 제안 데이터를 로드했습니다. 4단계 유지.`)
-                }
-              } else {
-                // teamProposal이 없으면 1단계로 초기화 (데이터 삭제됨)
-                console.log(`${appState.teamId}모둠의 teamProposal이 없습니다. 1단계로 초기화합니다.`)
-                appState.currentStage = 1
-                appState.teamProposal = null
-                appState.answers = {}
-                appState.proposal = { problem: '', solution: '', reason: '' }
-                appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-                appState.votes = {}
-                saveProgress()
-              }
-            } else if (teamCurrentStage === 5) {
-              // 5단계: 모둠이 5단계에 있으면 이 학생도 5단계로 이동 (투표 진행 중일 때만)
-              // 단, teamProposal이 있어야 함 (공약이 없으면 5단계로 갈 수 없음)
-              if (hasTeamProposal) {
-                if (!hasProgress || appState.currentStage < 5) {
-                  const previousStage = appState.currentStage
-                  appState.currentStage = 5
-                  console.log(`${appState.teamId}모둠이 5단계에 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 5단계로 이동합니다.`)
-                  saveProgress()
-                }
-              } else {
-                // teamProposal이 없으면 1단계로 초기화 (데이터 삭제됨)
-                console.log(`${appState.teamId}모둠이 5단계에 있지만 teamProposal이 없습니다. 1단계로 초기화합니다.`)
-                appState.currentStage = 1
-                appState.teamProposal = null
-                appState.answers = {}
-                appState.proposal = { problem: '', solution: '', reason: '' }
-                appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-                appState.votes = {}
-                // Firebase의 teamCurrentStage도 null로 초기화
-                try {
-                  const teamKey = `team${appState.teamId}`
-                  const teamCurrentStageRef = ref(db, `teams/${teamKey}/currentStage`)
-                  await set(teamCurrentStageRef, null)
-                } catch (error) {
-                  console.error('teamCurrentStage 초기화 실패:', error)
-                }
-                saveProgress()
-              }
-            } else if (teamCurrentStage >= 6) {
-              // 6단계 이상: 투표가 재개된 상태이면 5단계로 돌아가서 새로운 제안에 투표할 수 있게 함
-              console.log(`${appState.teamId}모둠이 ${teamCurrentStage}단계에 있지만 투표가 재개되어 5단계로 돌아갑니다. 기존 투표를 초기화합니다.`)
-              appState.currentStage = 5
-              // 기존 투표 데이터 초기화 (모든 제안에 대해 새로 투표)
-              appState.votes = {}
-              // Firebase에서도 모둠 투표 데이터 초기화
-              if (db && appState.teamId) {
-                try {
-                  const teamKey = `team${appState.teamId}`
-                  const teamVotesRef = ref(db, `teams/${teamKey}/votes`)
-                  await set(teamVotesRef, null)
-                  console.log(`${teamKey}의 투표 데이터를 초기화했습니다.`)
-                } catch (error) {
-                  console.error('투표 데이터 초기화 실패:', error)
-                }
-              }
-              saveProgress()
-            }
-          } else if (hasTeamProposal && votingStatus === 'open') {
-            // teamProposal은 있지만 currentStage가 없으면 4단계로 설정 (하위 호환성)
-            appState.teamProposal = teamProposalSnapshot.val()
-            if (!hasProgress || appState.currentStage < 4) {
-              const previousStage = appState.currentStage
-              appState.currentStage = 4
-              console.log(`${appState.teamId}모둠의 모둠 제안이 있습니다. 개별 진행 상태(${hasProgress ? previousStage : '없음'})에서 4단계로 이동합니다.`)
-              saveProgress()
-            }
-          } else {
-            // teamProposal도 없고 currentStage도 없으면 1단계로 초기화 (데이터 삭제됨)
-            if (hasProgress && appState.currentStage >= 4) {
-              console.log(`${appState.teamId}모둠의 데이터가 없습니다. 1단계로 초기화합니다.`)
-              appState.currentStage = 1
-              appState.teamProposal = null
-              appState.answers = {}
-              appState.proposal = { problem: '', solution: '', reason: '' }
-              appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-              appState.votes = {}
-              saveProgress()
-            }
-          }
-        } catch (error) {
-          console.error('모둠 진행 상태 확인 실패:', error)
-        }
-      }
+      // Firebase 확인은 위에서 이미 완료됨 (4단계 이상은 위에서 설정, 1~3단계는 localStorage에서 복원)
       
       // 투표 상태 확인 및 단계 조정 (모둠 진행 상태 복원 후에도 확인)
       if (votingStatus === 'closed') {
