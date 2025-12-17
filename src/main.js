@@ -2437,6 +2437,9 @@ function attachEventListeners() {
       // 투표 상태 먼저 확인 (진행 상태 복원 전에 확인)
       const votingStatus = await getVotingStatus()
       
+      // hasProgress 변수 선언 (나중에 사용될 수 있음)
+      let hasProgress = false
+      
       // Firebase에서 모둠 진행 상태를 먼저 확인 (4단계 이상일 때)
       let teamCurrentStage = null
       let hasTeamProposal = false
@@ -2529,7 +2532,7 @@ function attachEventListeners() {
         saveProgress()
       } else {
         // Firebase에 4단계 이상이 없으면 localStorage에서 진행 상태 복원 시도 (1~3단계만)
-        const hasProgress = loadProgress(appState.teamId, appState.sessionId)
+        hasProgress = loadProgress(appState.teamId, appState.sessionId)
         
         // Firebase에서 해당 모둠의 투표 데이터 확인 (투표 종료 시 자동 전환을 위해)
         let hasTeamVote = false
