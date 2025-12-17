@@ -2797,30 +2797,72 @@ function attachEventListeners() {
           }, 100)
         }
       } else {
-        // 진행 상태가 없는 경우는 위에서 이미 처리됨 (투표 종료 상태 처리)
-        // 여기서는 투표 진행 중인 경우만 처리
-        console.log(`${appState.teamId}모둠의 새 시작: 1단계`)
-        
-        // 진행 상태 초기화
-        appState.currentStage = 1
-        appState.answers = {}
-        appState.proposal = { problem: '', solution: '', reason: '' }
-        appState.teamProposal = null
-        appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
-        appState.votes = {}
-        
-        try {
-          console.log('CSV 파일 로드 시작...')
-          appState.parkingData = await parseCSV('/illegal_parking.csv')
-          console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
+        // 진행 상태가 없는 경우
+        // Firebase에서 이미 4단계 이상으로 설정한 경우는 그대로 진행
+        if (appState.currentStage >= 4) {
+          // Firebase에서 이미 단계를 설정했으므로 그대로 진행
+          // CSV 데이터가 필요한 단계인 경우 로드
+          if (appState.currentStage >= 1 && appState.currentStage <= 4) {
+            try {
+              if (!appState.parkingData) {
+                appState.parkingData = await parseCSV('/illegal_parking.csv')
+              }
+            } catch (error) {
+              console.error('CSV 데이터 로드 실패:', error)
+            }
+          }
+          
+          // 5단계 이상인 경우 제안 불러오기
+          if (appState.currentStage >= 5) {
+            try {
+              await loadProposalsFromFirebase()
+              await loadVotesFromFirebase()
+            } catch (error) {
+              console.error('Firebase 데이터 로드 실패:', error)
+            }
+          }
+          
           saveProgress()
           await renderApp()
-          setTimeout(() => {
-            renderCharts()
-          }, 100)
-        } catch (error) {
-          console.error('데이터 로드 실패:', error)
-          alert('데이터를 불러오는데 실패했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
+          
+          if (appState.currentStage === 4) {
+            setTimeout(() => {
+              setupTeamProposalRealtimeSync()
+            }, 100)
+          } else if (appState.currentStage === 5) {
+            setTimeout(() => {
+              setupRealtimeUpdates()
+            }, 100)
+          } else if (appState.currentStage === 6) {
+            setTimeout(() => {
+              generateSpeech()
+            }, 500)
+          }
+        } else {
+          // 진행 상태가 없고 Firebase에서도 4단계 이상이 아닌 경우: 새로 시작
+          console.log(`${appState.teamId}모둠의 새 시작: 1단계`)
+          
+          // 진행 상태 초기화
+          appState.currentStage = 1
+          appState.answers = {}
+          appState.proposal = { problem: '', solution: '', reason: '' }
+          appState.teamProposal = null
+          appState.questionAnswers = { question1: null, question2: null, question1Correct: null, question2Correct: null }
+          appState.votes = {}
+          
+          try {
+            console.log('CSV 파일 로드 시작...')
+            appState.parkingData = await parseCSV('/illegal_parking.csv')
+            console.log('illegal_parking.csv 로드 완료:', appState.parkingData.length, '개')
+            saveProgress()
+            await renderApp()
+            setTimeout(() => {
+              renderCharts()
+            }, 100)
+          } catch (error) {
+            console.error('데이터 로드 실패:', error)
+            alert('데이터를 불러오는데 실패했습니다: ' + error.message + '\n\n브라우저 콘솔(F12)에서 자세한 오류를 확인해주세요.')
+          }
         }
       }
     })
