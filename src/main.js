@@ -2407,14 +2407,31 @@ function attachEventListeners() {
             lastActiveAt: new Date().toISOString()
           })
           
-          // 페이지 언로드 시 자신의 세션 정보 삭제
-          window.addEventListener('beforeunload', () => {
+          // 페이지 언로드 시 정리 함수
+          const cleanupOnUnload = () => {
+            // 세션 정보 삭제
             if (db && appState.teamId && appState.sessionId) {
               const teamKey = `team${appState.teamId}`
               const activeSessionRef = ref(db, `teams/${teamKey}/activeSessions/${appState.sessionId}`)
               set(activeSessionRef, null).catch(() => {}) // 에러 무시 (페이지가 닫히는 중이므로)
             }
-          })
+            // heartbeatInterval 정리
+            if (appState.heartbeatInterval) {
+              clearInterval(appState.heartbeatInterval)
+              appState.heartbeatInterval = null
+            }
+            // 리스너 정리
+            cleanupRealtimeListeners()
+            // 전역 리스너 정리
+            if (globalVotingStatusListener) {
+              globalVotingStatusListener()
+              globalVotingStatusListener = null
+            }
+          }
+          
+          // 기존 beforeunload 리스너 제거 후 새로 추가 (중복 방지)
+          window.removeEventListener('beforeunload', cleanupOnUnload)
+          window.addEventListener('beforeunload', cleanupOnUnload)
           
           // 주기적으로 활동 시간 업데이트 (30초마다)
           if (appState.heartbeatInterval) {
